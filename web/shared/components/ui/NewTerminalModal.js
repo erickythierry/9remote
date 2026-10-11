@@ -217,7 +217,7 @@ export default function NewTerminalModal({
     pushView({ type: "browser" });
   };
   const browserAction = onCreateBrowser !== undefined ? onCreateBrowser : (connected ? defaultCreateBrowser : null);
-  const browserOpt = browserAction ? { id: "browser", isBrowser: true, label: t("sites.browserTab") } : null;
+  const browserOpt = browserAction ? { id: "browser", isBrowser: true, label: t("sites.browserPaneIntroTitle") } : null;
   const agent = (agentId && allAgents.find((a) => a.id === agentId)) || (agentId === "browser" ? browserOpt : null) || null;
   // Slot 0: Plain terminal (row 1 left)
   // Slot 1: Browser (row 1 right), or the spacer that keeps pairs aligned on the same row
