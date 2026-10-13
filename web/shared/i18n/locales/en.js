@@ -525,6 +525,7 @@ export default {
     editCode: "Edit code",
     reload: "Reload",
     previewFailed: "Preview failed",
+    previewInBrowser: "Open in Browser",
     previewNoRoute: "No LAN or tunnel route to the host",
     previewBack: "Back",
     previewForward: "Forward",

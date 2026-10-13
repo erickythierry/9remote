@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { startWidthDrag } from "@/shared/utils/dragResize";
-import { Save, X, ExternalLink, Eye, FileCode } from "@/shared/components/ui/Icon";
+import { Save, X, ExternalLink, Eye, FileCode, Globe } from "@/shared/components/ui/Icon";
 import { vibrate } from "@/shared/utils/vibration";
 import { useI18n } from "@/shared/i18n";
 import { PANEL_HEADER_HEIGHT } from "@/shared/constants/layout";
@@ -18,6 +18,7 @@ import CodeEditor from "@/features/fileExplorer/components/CodeEditor";
 import FilePreview from "@/features/fileExplorer/components/FilePreview";
 import TextPreview from "@/features/fileExplorer/components/TextPreview";
 import DiffView from "@/features/fileExplorer/components/DiffView";
+import { openHtmlPreviewInBrowser } from "@/features/fileExplorer/lib/previewInBrowser";
 
 // A file opened from the tree, edited without leaving the terminal. Narrow on purpose —
 // this is for a quick read or fix, not a replacement for the full editor view.
@@ -53,12 +54,16 @@ export default function TerminalEditorPanel({
 
   // Text files with rendered forms (html, markdown, mermaid) can flip between source and preview.
   const previewKind = !editable ? null : getTextPreviewKind(filePath);
+  // HTML renders in the remote browser pane, not in-place: its "preview" hands a
+  // loopback preview URL to the browser view instead of swapping this panel.
+  const isHtmlPreview = previewKind === "html";
   // A non-zero previewSeq is the opener saying "show this rendered" — the tree's Preview
   // action, and every artifact the AI opens. Read at mount too, not only on a later
   // change: the panel is mounted BY that first open, so a seq compared against its own
   // initial value never fires and the first artifact would land on its source.
   const wantsRendered = previewSeq > 0;
   const [showRendered, setShowRendered] = useState(wantsRendered);
+  const [previewError, setPreviewError] = useState("");
   const [saveSeq, setSaveSeq] = useState(0);
   const [lastPath, setLastPath] = useState(filePath);
   const [prevSaved, setPrevSaved] = useState(false);
@@ -70,6 +75,7 @@ export default function TerminalEditorPanel({
     setLastPath(filePath);
     setLastPreviewSeq(previewSeq);
     setShowRendered(wantsRendered);
+    setPreviewError("");
   }
   // Edge-trigger justSaved into a counter the preview can reload on.
   if (doc.justSaved !== prevSaved) {
@@ -103,6 +109,25 @@ export default function TerminalEditorPanel({
     debounceMs: FILE_WATCH.PREVIEW_DEBOUNCE_MS,
     onDirsChanged: onDiskChanged
   });
+
+  // HTML preview opens in the remote browser pane; this panel stays on source.
+  const openBrowserPreview = useCallback(() => {
+    openHtmlPreviewInBrowser(fileBus, filePath).then((r) => {
+      if (!r.ok) setPreviewError(r.error || t("editor.previewFailed"));
+    });
+  }, [fileBus, filePath, t]);
+  // An artifact or Preview open takes HTML straight to the browser pane.
+  useEffect(() => {
+    if (!isHtmlPreview || previewSeq <= 0) return;
+    let cancelled = false;
+    openHtmlPreviewInBrowser(fileBus, filePath).then((r) => {
+      if (!cancelled && !r.ok) setPreviewError(r.error || t("editor.previewFailed"));
+    });
+    return () => { cancelled = true; };
+  // t is stable enough for an error string: a locale dict landing late must not
+  // re-run the open (it would spawn a duplicate tab).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHtmlPreview, previewSeq, fileBus, filePath]);
 
   if (!filePath) return null;
 
@@ -139,13 +164,23 @@ export default function TerminalEditorPanel({
         )}
 
         {previewKind && (
-          <button
-            onClick={() => { vibrate(); setShowRendered((v) => !v); }}
-            title={showRendered ? t("editor.editCode") : t("editor.preview")}
-            className="p-1 text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
-          >
-            {showRendered ? <FileCode size={13} /> : <Eye size={13} />}
-          </button>
+          isHtmlPreview ? (
+            <button
+              onClick={() => { vibrate(); openBrowserPreview(); }}
+              title={t("editor.previewInBrowser")}
+              className="p-1 text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
+            >
+              <Globe size={13} />
+            </button>
+          ) : (
+            <button
+              onClick={() => { vibrate(); setShowRendered((v) => !v); }}
+              title={showRendered ? t("editor.editCode") : t("editor.preview")}
+              className="p-1 text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
+            >
+              {showRendered ? <FileCode size={13} /> : <Eye size={13} />}
+            </button>
+          )
         )}
 
         {editable && (
@@ -190,6 +225,11 @@ export default function TerminalEditorPanel({
           {doc.error}
         </div>
       )}
+      {previewError && (
+        <div className="px-3 py-1.5 text-[11px] text-red-500 bg-red-500/10 border-b border-border-subtle break-words">
+          {previewError}
+        </div>
+      )}
 
       {/* Something else rewrote the file while edits were in progress. The choice is the
           user's: taking the new text automatically would throw their work away. */}
@@ -210,7 +250,7 @@ export default function TerminalEditorPanel({
           <DiffView diffPath={makeDiffPath(diff.status, diff.filePath)} workspace={diffRepo} fileBus={fileBus} compact />
         ) : isPreviewable(filePath) ? (
           <FilePreview filePath={filePath} fileBus={fileBus} />
-        ) : showRendered && previewKind ? (
+        ) : showRendered && previewKind && !isHtmlPreview ? (
           <TextPreview kind={previewKind} filePath={filePath} fileBus={fileBus} content={doc.content} reloadKey={saveSeq} />
         ) : doc.loading ? (
           <div className="h-full flex items-center justify-center text-text-muted text-xs">{t("common.loading")}</div>
