@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "predev": "pkill -f 'workerd.*9remote' 2>/dev/null; true",
-    "dev": "next dev -H ::",
+    "dev": "next dev -H :: -p 2200",
     "build": "NODE_ENV=production next build --webpack",
     "build:static": "node ../scripts/buildWebStatic.mjs",
     "build:cf": "npm run build && NODE_ENV=production opennextjs-cloudflare build && node scripts/injectSignalingDO.mjs && node scripts/injectHotRoutes.mjs && node scripts/injectScheduled.mjs",

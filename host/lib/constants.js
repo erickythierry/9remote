@@ -92,7 +92,7 @@ export async function hideDockIcon() {
 export const VITE_DEV_PORT = 5173;
 
 // Next dev server port (web UI in a dev checkout)
-export const WEB_DEV_PORT = 3000;
+export const WEB_DEV_PORT = 2200;
 
 // Reserved deviceId for the trusted local UI — never persisted/tracked as a client.
 export const LOCAL_UI_DEVICE_ID = "local-ui";
