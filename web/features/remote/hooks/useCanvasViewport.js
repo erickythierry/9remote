@@ -96,6 +96,8 @@ export function useCanvasViewport() {
     if (!container || !canvas || server.width === 0 || server.height === 0) return;
 
     const size = { width: container.clientWidth, height: container.clientHeight };
+    // display:none (keep-mounted pane hidden) reports 0x0 — keep the last good fit.
+    if (size.width === 0 || size.height === 0) return;
     const scale = fitScaleFor(size, server);
     setFitScale(scale);
     // baseCanvasSize is the scaled size at zoom=1 — used for pan boundary math
