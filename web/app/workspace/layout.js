@@ -50,6 +50,7 @@ import RemoteDesktop from "@/features/remote/components/RemoteDesktop";
 import MobileMirror from "@/features/mobile/components/MobileMirror";
 import BrowserPane from "@/features/browser/components/BrowserPane";
 import { useBrowserStore } from "@/shared/stores/browserStore";
+import { BROWSER_OPEN_URL_EVENT } from "@/features/fileExplorer/lib/previewInBrowser";
 import WorkspaceList from "@/features/fileExplorer/components/WorkspaceList";
 import AgentDashboardView from "@/features/session/components/AgentDashboardView";
 import FileExplorer from "@/features/fileExplorer/components/FileExplorer";
@@ -378,6 +379,22 @@ export default function WorkspaceLayout({ children }) {
   // Browser pane lives inside TerminalWorkspace's panes container (below the tab
   // header), not as a full-view overlay — same store view type as before.
   const browserViewActive = currentView?.type === "browser";
+  // Keep each workspace's browser pane MOUNTED after its first open — switching to a
+  // terminal tab hides it instead of unmounting, so re-entering is instant (canvas
+  // keeps its frame; the stream just pauses). Keyed per workspace: switching
+  // workspaces swaps to that workspace's own pane cleanly.
+  const browserWsKey = activeWorkspaceId ?? "default";
+  // The pane outlives its view, so it must NOT read props off currentView (that is
+  // now whatever view is on top): capture the host it was opened with, per workspace.
+  const [browserOpenedByWs, setBrowserOpenedByWs] = useState({});
+  const browserOpenHost = currentView?.hostKey ?? null;
+  useEffect(() => {
+    if (!browserViewActive) return;
+    setBrowserOpenedByWs((m) => (m[browserWsKey] === browserOpenHost ? m : { ...m, [browserWsKey]: browserOpenHost }));
+  }, [browserViewActive, browserWsKey, browserOpenHost]);
+  const browserPaneMounted = browserOpenedByWs[browserWsKey] !== undefined;
+  const browserHost = browserViewActive ? browserOpenHost : browserOpenedByWs[browserWsKey] ?? null;
+  const browserHostRow = fleetHostsMap[browserHost];
   // Which Chrome this workspace browses with — the pane, strip and every
   // invoke resolve from this one map entry.
   const browserProfile = useBrowserStore((s) => s.workspaceProfiles[activeWorkspaceId ?? "default"] || "default");
@@ -619,6 +636,44 @@ export default function WorkspaceLayout({ children }) {
     bus.on("artifactOpen", onArtifactOpen);
     return () => bus.off("artifactOpen", onArtifactOpen);
   }, [busRef, connected, activeSessionId, pushArtifact, openArtifact]);
+
+  // HTML preview rides the remote browser pane: every surface (explorer, editors,
+  // artifacts) dispatches BROWSER_OPEN_URL_EVENT, and this one listener owns the
+  // bus and the view switch — the host's own Chrome loads the loopback preview URL.
+  useEffect(() => {
+    const onOpenUrl = (e) => {
+      const url = e?.detail?.url;
+      // Loopback preview URLs only — the event name is guessable, and this
+      // listener opens a tab in the user's Chrome.
+      if (typeof url !== "string" || !url.startsWith("http://127.0.0.1:") || !url.includes("/preview/")) return;
+      const wsKey = activeWorkspaceId ?? "default";
+      const st = useBrowserStore.getState();
+      const windowId = st.workspaceWindows[wsKey] || null;
+      // The preview session is minted over the MAIN file bus (every dispatching
+      // surface rides it), so the tab must open on the main host's Chrome — that
+      // is whose loopback port the URL names.
+      busRef?.current?.emit?.("browser:invoke", {
+        action: "open",
+        payload: {
+          url,
+          profile: st.workspaceProfiles[wsKey] || "default",
+          // First browser tab of this workspace gets its own Chrome window.
+          newWindow: !windowId,
+          windowId: windowId || undefined
+        }
+      }, (res) => {
+        if (!res?.ok || !res.id) return;
+        const after = useBrowserStore.getState();
+        if (res.windowId && res.windowId !== after.workspaceWindows[wsKey]) after.setWindowFor(wsKey, res.windowId);
+        after.setActive(wsKey, res.id);
+        const cur = after.tabsByWorkspace[wsKey] || [];
+        if (!cur.some((tb) => tb.id === res.id)) after.setTabs(wsKey, [...cur, { id: res.id, url, title: "" }]);
+      });
+      pushView({ type: "browser" });
+    };
+    window.addEventListener(BROWSER_OPEN_URL_EVENT, onOpenUrl);
+    return () => window.removeEventListener(BROWSER_OPEN_URL_EVENT, onOpenUrl);
+  }, [activeWorkspaceId, busRef, pushView]);
 
   // Lazy per-workspace mount: the FIRST time a workspace becomes active, mark it mounted so its
   // panes' XTerms initialize. Others stay as placeholders until visited — avoids mounting every
@@ -931,10 +986,13 @@ export default function WorkspaceLayout({ children }) {
             isDesktop={isDesktop}
             isTerminalView={isTerminalView}
             pairDashboard={isDesktop && currentView?.type === "pair" ? <AgentDashboardView /> : null}
-            browserPanel={browserViewActive ? (
+            browserVisible={browserViewActive}
+            browserPanel={browserPaneMounted ? (
               <BrowserPane
-                busRef={currentView.hostKey ? connOf(currentView.hostKey).busRef : busRef}
-                connected={currentView.hostKey ? rowLive(fleetHostsMap[currentView.hostKey]) : connected}
+                key={browserWsKey}
+                visible={browserViewActive}
+                busRef={browserHost ? connOf(browserHost).busRef : busRef}
+                connected={browserHost ? rowLive(browserHostRow) : connected}
                 onBack={storePopView}
                 profile={browserProfile}
                 workspaceId={activeWorkspaceId}

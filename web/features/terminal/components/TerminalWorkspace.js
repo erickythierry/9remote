@@ -93,6 +93,7 @@ function TerminalWorkspace({
   onAddWorkspace, onOpenSettings, homeDir, recentWorkspaces,
   rightPanel, editorPanel, mobilePanel, onOpenArtifact, fileBus,
   browserPanel = null,
+  browserVisible = true,
   onCreateAnyHost, onQuickCreateHostAware,
   tunnelUrl, apiKey, connectionMode,
   onResumeAgentSessionForeign = null,
@@ -529,11 +530,14 @@ function TerminalWorkspace({
   // Browser pane rides inside the panes container (not a full-view overlay), so the
   // shell keeps its header/sidebar while it is up.
   const browserActive = !!browserPanel;
+  // Mounted ≠ on top: the pane outlives its view (keep-mounted), so parking and
+  // pane-hiding must follow the VIEW state, not the mount state.
+  const browserOnTop = browserActive && browserVisible;
 
   return (
     // Park LEFT when hidden: translate-x-full made the overflow:hidden container horizontally pannable on iOS, leaving the session list stuck shifted left; the negative side creates no scrollable extent.
     <div
-      className={`absolute inset-0 flex flex-col ${isTerminalView || browserActive || pairDashboard || welcomeActive ? "translate-x-0 opacity-100 z-10" : "-translate-x-full opacity-0 z-0 pointer-events-none"}`}
+      className={`absolute inset-0 flex flex-col ${isTerminalView || browserOnTop || pairDashboard || welcomeActive ? "translate-x-0 opacity-100 z-10" : "-translate-x-full opacity-0 z-0 pointer-events-none"}`}
     >
       <div ref={rowRef} className={`flex-1 min-h-0 relative ${isDesktop ? "flex flex-row" : "flex flex-col"}`}>
         {isDesktop && (
@@ -686,8 +690,10 @@ function TerminalWorkspace({
               onSwitch: nav.handleSelectSession
             })}
           >
+            {/* display:none keeps the pane (and its canvas) alive while another
+                tab is focused — the pane pauses its stream when not visible. */}
             {browserActive && (
-              <div className="absolute inset-0 z-10">{browserPanel}</div>
+              <div className={`absolute inset-0 z-10 ${browserVisible ? "" : "hidden"}`}>{browserPanel}</div>
             )}
             {renderedSessions.map((sessionId) => {
               const inActiveWorkspace = workspaceSessionIds.has(sessionId);
@@ -705,7 +711,7 @@ function TerminalWorkspace({
                   key={sessionId}
                   ref={(el) => registerPaneElement(sessionId, el)}
                   className={
-                    browserActive || !inActiveWorkspace || (isDesktop && fullMode && !isFocused) || (isDesktop && isHidden)
+                    browserOnTop || !inActiveWorkspace || (isDesktop && fullMode && !isFocused) || (isDesktop && isHidden)
                       ? "hidden"
                       : isDesktop
                       ? `h-full relative bg-bg ${hostUpdating ? "opacity-50 pointer-events-none" : ""} ${fullMode ? "w-full flex-1" : `border-r-2 border-border-subtle last:border-r-0 ${isPaneResizing ? "" : "transition-[width] duration-200 ease-out"}`}`
