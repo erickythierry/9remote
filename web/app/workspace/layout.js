@@ -411,7 +411,7 @@ export default function WorkspaceLayout({ children }) {
     activeWorkspaceId, setActiveWorkspaceId, activeSessionId,
     addOpenedSession, removeOpenedSession, touchLivePane,
     createSession, deleteSession, renameSession, busRef,
-    requestFocus: paneRegistry.requestFocus
+    isDesktop, requestFocus: paneRegistry.requestFocus
   });
 
   const {
@@ -585,6 +585,37 @@ export default function WorkspaceLayout({ children }) {
     attentionNext: jumpToNextWaiting,
     help: openShortcutsModal
   }, isDesktop && isTerminalView);
+
+  // The docked editor panel belongs to the workspace it opened in — on switch, stash
+  // the current file per workspace and restore the target's, so coming back reopens it.
+  const editorByWsRef = useRef(new Map());
+  const lastEditorWsRef = useRef(activeWorkspaceId);
+  useEffect(() => {
+    const prevWs = lastEditorWsRef.current;
+    if (prevWs === activeWorkspaceId) return;
+    lastEditorWsRef.current = activeWorkspaceId;
+    // Live store read: the effect only tracks the workspace id, not every editor field
+    const st = useTerminalStore.getState();
+    if (st.editorFilePath) {
+      editorByWsRef.current.set(prevWs, {
+        filePath: st.editorFilePath,
+        preview: st.editorPreviewSeq > 0,
+        artifactTitle: st.artifactTitle,
+        artifactSessionId: st.artifactSessionId,
+        line: st.editorJump?.line,
+        column: st.editorJump?.column
+      });
+    } else {
+      editorByWsRef.current.delete(prevWs);
+    }
+    const snap = editorByWsRef.current.get(activeWorkspaceId);
+    if (snap) {
+      const { filePath, ...opts } = snap;
+      st.openEditorFile(filePath, opts);
+    } else {
+      st.closeEditorFile();
+    }
+  }, [activeWorkspaceId]);
 
   // Side panel's "open full": swap the docked panel for the full editor route. The
   // workspace root rides along so the desktop editor mounts the right tree.
@@ -965,8 +996,9 @@ export default function WorkspaceLayout({ children }) {
         {/* Terminal view: shared header + multi-pane layout. Always mounted on desktop —
             it is the bottom of the stack there, and its sidebar is the only place to pick
             a workspace. On mobile it waits for a pane to open; the session list is what
-            greets an empty machine there. */}
-        {(isDesktop || openedSessions.length > 0) && (
+            greets an empty machine there. A mounted browser pane lives inside it, so it
+            keeps the shell up too — unmounting it left the browser view with no renderer. */}
+        {(isDesktop || openedSessions.length > 0 || browserPaneMounted) && (
           <TerminalWorkspace
             platform={platform}
             hostVersion={hostVersion || agentVersion}

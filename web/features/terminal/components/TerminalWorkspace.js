@@ -239,7 +239,8 @@ function TerminalWorkspace({
   // Exactly one host and no workspace: show the two-half poster stage (workspace/remote).
   // Multi-host skips this stage so the user sees the fleet instead.
   const fleetHostCount = useFleetStore((s) => Object.keys(s.hosts).length);
-  const showWelcomeStage = showEmptyState && !workspaces.length && fleetHostCount <= 1;
+  // A browser on top wins: its pane lives in the panes container this stage replaces.
+  const showWelcomeStage = showEmptyState && !workspaces.length && fleetHostCount <= 1 && !(browserPanel && browserVisible);
 
   // The collapsed panel stays mounted so its width can animate, but only after a first
   // open — otherwise a user who never opens it still pays for the tree and git scan.
