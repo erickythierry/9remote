@@ -214,6 +214,9 @@ export default function NewTerminalModal({
         after.setTabs(wsKey, [...cur, { id: res.id, url: "about:blank", title: "" }]);
       }
     });
+    // The pane draws the ACTIVE workspace's tabs: aim it at the workspace this tab joined.
+    const term = useTerminalStore.getState();
+    if (!modalConn.head && (term.activeWorkspaceId ?? null) !== workspaceId) term.setActiveWorkspaceId(workspaceId);
     pushView({ type: "browser" });
   };
   const browserAction = onCreateBrowser !== undefined ? onCreateBrowser : (connected ? defaultCreateBrowser : null);
