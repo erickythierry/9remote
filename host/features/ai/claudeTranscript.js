@@ -137,6 +137,68 @@ export function recoverFromClaudeTranscript(cwd, cliSessionId, startSeq = 1, lea
     let seq = startSeq;
     let cut = false;   // set when the walk passes a turn the branch no longer holds
 
+    // CLI 2.1+: a sub-agent's records live in their own file beside the main one —
+    // <sid>/subagents/agent-*.jsonl — with the spawner's tool_use id in the .meta.json.
+    // Replayed as tool_child/tool_result_child so a reopened chat rebuilds the card tree.
+    const subByTool = new Map();
+    const subsDir = path.join(path.dirname(resolved), path.basename(resolved, ".jsonl"), "subagents");
+    for (const name of readdirOr(subsDir)) {
+      if (!name.endsWith(".meta.json")) continue;
+      try {
+        const meta = JSON.parse(fs.readFileSync(path.join(subsDir, name), "utf8"));
+        const file = path.join(subsDir, name.replace(/\.meta\.json$/, ".jsonl"));
+        if (meta.toolUseId && fs.existsSync(file)) subByTool.set(meta.toolUseId, file);
+      } catch {}
+    }
+    // Tool ids this walk emitted a start for — a sub-agent of a rewound-away turn has no card to nest under.
+    const launchedIds = new Set();
+    const walkedSubs = new Set();
+    const walkSubagent = (file, parent) => {
+      if (walkedSubs.has(file)) return;
+      walkedSubs.add(file);
+      let subLines;
+      try { subLines = fs.readFileSync(file, "utf8").split("\n"); } catch { return; }
+      for (const line of subLines) {
+        if (!line.trim()) continue;
+        let d;
+        try { d = JSON.parse(line); } catch { continue; }
+        const items = d.message?.content;
+        if (!Array.isArray(items)) continue;
+        if (d.type === "assistant") {
+          for (const item of items) {
+            if (item?.type !== "tool_use") continue;
+            toolCalls.set(item.id, { name: item.name, input: item.input });
+            const start = toolStart({ id: item.id, name: item.name, input: item.input, parentToolUseId: parent });
+            start.event = "tool_child";
+            events.push({ seq: seq++, ...start });
+            // A sub-agent may spawn one of its own — its file nests the same way.
+            if (subByTool.has(item.id)) walkSubagent(subByTool.get(item.id), item.id);
+          }
+        } else if (d.type === "user") {
+          for (const tr of items.filter((c) => c?.type === "tool_result")) {
+            const isError = Boolean(tr.is_error);
+            const resultText = typeof tr.content === "string"
+              ? tr.content
+              : (tr.content || []).map((c) => (typeof c === "string" ? c : c?.text || "")).join("");
+            const call = toolCalls.get(tr.tool_use_id);
+            toolCalls.delete(tr.tool_use_id);
+            events.push({
+              seq: seq++,
+              event: "tool_result_child",
+              data: {
+                id: tr.tool_use_id,
+                name: call?.name || "",
+                output: isError ? resultText : collapsePersisted(resultText),
+                error: isError ? resultText : "",
+                status: isError ? "error" : "done",
+                parentToolUseId: parent
+              }
+            });
+          }
+        }
+      }
+    };
+
     // A notification ends the tool row it names — on this door the settle is the row's only end (no watchdog in a replay).
     const pushTaskNotification = (task) => {
       events.push({ seq: seq++, ...task });
@@ -200,6 +262,31 @@ export function recoverFromClaudeTranscript(cwd, cliSessionId, startSeq = 1, lea
               if (diff) events.push({ seq: seq++, event: "diff", data: diff });
             }
           }
+        } else if (d.type === "user" && d.isSidechain && d.parent_tool_use_id) {
+          // A sub-agent's tool results nest under their spawner — same wire events the
+          // live door's remap produces (aiSession CHILD_EVENTS), so a reopened chat
+          // rebuilds the card tree instead of dropping the sub-agent's results.
+          const content = Array.isArray(d.message.content) ? d.message.content : [];
+          for (const tr of content.filter((c) => c.type === "tool_result")) {
+            const isError = Boolean(tr.is_error);
+            const resultText = typeof tr.content === "string"
+              ? tr.content
+              : (tr.content || []).map((c) => (typeof c === "string" ? c : c?.text || "")).join("");
+            const call = toolCalls.get(tr.tool_use_id);
+            toolCalls.delete(tr.tool_use_id);
+            events.push({
+              seq: seq++,
+              event: "tool_result_child",
+              data: {
+                id: tr.tool_use_id,
+                name: call?.name || "",
+                output: isError ? resultText : collapsePersisted(resultText),
+                error: isError ? resultText : "",
+                status: isError ? "error" : "done",
+                parentToolUseId: d.parent_tool_use_id
+              }
+            });
+          }
         } else if (d.type === "attachment") {
           // Harness-injected context, slimmed to what the pane can ever draw (see slimAttachmentRecord).
           events.push({
@@ -219,20 +306,31 @@ export function recoverFromClaudeTranscript(cwd, cliSessionId, startSeq = 1, lea
             data: { type: "system", subtype: d.subtype || "", record: d }
           });
         } else if (d.type === "assistant" && d.message) {
+          // A sidechain record is a sub-agent at work: its calls nest (tool_child), and
+          // its thinking/text/turn-end belong to the card, not the main timeline.
+          const parent = d.parent_tool_use_id || "";
           for (const item of d.message.content || []) {
-            if (item.type === "thinking" && item.thinking) {
+            if (item.type === "thinking" && item.thinking && !parent) {
               events.push({ seq: seq++, event: "thinking", data: { text: item.thinking } });
             } else if (item.type === "tool_use") {
               // Held for its result: the diff is built from this call's input — the result carries only the id.
               toolCalls.set(item.id, { name: item.name, input: item.input });
-              events.push({ seq: seq++, ...toolStart({ id: item.id, name: item.name, input: item.input }) });
-            } else if (item.type === "text" && item.text) {
+              const start = toolStart({ id: item.id, name: item.name, input: item.input, parentToolUseId: parent || null });
+              if (parent) start.event = "tool_child";
+              events.push({ seq: seq++, ...start });
+              if (!parent) launchedIds.add(item.id);
+            } else if (item.type === "text" && item.text && !parent) {
               events.push({ seq: seq++, event: "delta", data: { text: item.text } });
             }
           }
-          events.push({ seq: seq++, event: "turn_complete", data: { stats: {} } });
+          if (!parent) events.push({ seq: seq++, event: "turn_complete", data: { stats: {} } });
         }
       } catch {}
+    }
+
+    // Sub-agent files nest after the main walk — every parent card exists before its children arrive.
+    for (const [toolUseId, file] of subByTool) {
+      if (launchedIds.has(toolUseId)) walkSubagent(file, toolUseId);
     }
 
     return events.length > 0 ? events : null;
