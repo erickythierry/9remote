@@ -264,7 +264,6 @@ export class AiSession {
     this.isTurnRunning = false;
     this.promptQueue = [];
     this._drainTimer = null;
-    this._stoppingForQueue = false;
     this._ensureAlive = null;
     // Async watchdogs by tool id; ponytail: fallback only — task_* records disarm them on newer CLIs.
     this.asyncTimers = new Map();
@@ -809,27 +808,6 @@ export class AiSession {
     if (event === "tool_result") {
       if (data?.async && data?.handle) this.armAsyncWatchdog(data.id, data.parentToolUseId);
       else if (data?.id) this.clearAsyncWatchdog(data.id);
-
-      // Queued prompts waiting: fold one into the RUNNING turn between LLM requests
-      // — no interrupt, the agent just sees it on its next request.
-      if (!data?.async && !data?.parentToolUseId && this.promptQueue?.length > 0 && !this._stoppingForQueue) {
-        if (typeof this.adapter?.injectPrompt === "function") {
-          this._injectQueuedPrompt();
-        } else {
-          // Engines without injection: interrupt the loop after this tool so the
-          // queued prompt can start a new turn without waiting for the full loop.
-          const hasPendingTools = Boolean(this.adapter?.toolCalls && this.adapter.toolCalls.size > 0);
-          if (!hasPendingTools && (typeof this.adapter?.interrupt === "function" || typeof this.adapter?.signal === "function")) {
-            this._stoppingForQueue = true;
-            setTimeout(() => {
-              this._stoppingForQueue = false;
-              if (this.isTurnRunning && this.promptQueue?.length > 0) {
-                this.stop();
-              }
-            }, 0);
-          }
-        }
-      }
     }
 
     // Any terminal event releases the turn, or a failed spawn leaves every client spinning.
@@ -841,22 +819,6 @@ export class AiSession {
       this.applyPendingOptions();
       this._saveKvState(false);
       this._drainQueue();
-    }
-  }
-
-  // Fold the next queued prompt into the RUNNING turn — the CLI queues it
-  // internally and includes it in its next LLM request. Nothing is interrupted.
-  _injectQueuedPrompt() {
-    const next = this.promptQueue.shift();
-    this.emitQueueUpdate();
-    this.emitNormalized("user_message", { text: next.text, attachments: attachmentMeta(next.attachments) });
-    try {
-      this.adapter.injectPrompt(next.text, next.attachments);
-    } catch (err) {
-      // Not lost — back at the head of the queue for the next boundary or drain.
-      this.promptQueue.unshift(next);
-      this.emitQueueUpdate();
-      this.emitNormalized("error", { message: `Queued prompt was not injected: ${err.message}` });
     }
   }
 
@@ -1404,7 +1366,6 @@ export class AiSession {
     this.clearAllAsyncWatchdogs();
     if (this._drainTimer) { clearTimeout(this._drainTimer); this._drainTimer = null; }
     this.promptQueue = [];
-    this._stoppingForQueue = false;
     if (this.persistTimer) { clearTimeout(this.persistTimer); this.persistTimer = null; }
     // Wait for the async stop before unlinking, or its exit event writes the snapshot right back.
     const stopped = this.options.mock || typeof this.adapter?.stop !== "function" ? Promise.resolve() : this.adapter.stop();
