@@ -8,7 +8,8 @@ import { useI18n } from "@/shared/i18n";
 import { PANEL_HEADER_HEIGHT } from "@/shared/constants/layout";
 import { EDITOR_PANEL_WIDTH } from "../constants/terminalConfig";
 import { resolveFileIcon } from "@/features/fileExplorer/constants/fileIcons";
-import { isDiffPath, parseRepoDiffPath, makeDiffPath, GIT_STATUS_COLORS, getTextPreviewKind, FILE_WATCH } from "@/features/fileExplorer/constants/fileExplorer";
+import { isDiffPath, parseRepoDiffPath, makeDiffPath, GIT_STATUS_COLORS, getTextPreviewKind, FILE_WATCH, STORAGE_KEYS, EDITOR_FONT_DEFAULT, EDITOR_FONT_MIN, EDITOR_FONT_MAX } from "@/features/fileExplorer/constants/fileExplorer";
+import { usePersistedState } from "@/shared/hooks/usePersistedState";
 import { isPreviewable } from "@/features/fileExplorer/components/FilePreview";
 import { useFileDocument } from "@/features/fileExplorer/hooks/useFileDocument";
 import { useUnsavedGuard } from "@/features/fileExplorer/hooks/useUnsavedGuard";
@@ -45,6 +46,12 @@ export default function TerminalEditorPanel({
   const editable = !!filePath && !isDiff && !isPreviewable(filePath);
 
   const doc = useFileDocument({ filePath: editable ? filePath : "", fileBus });
+
+  // The docked panel steps down from the shared editor font (CodeEditor compact), so
+  // the +/- bar adjusts the same persisted size the full editor and settings use.
+  const [fontSize, setFontSize] = usePersistedState(STORAGE_KEYS.editorFontSize, EDITOR_FONT_DEFAULT);
+  const bumpFont = (delta) => setFontSize((v) =>
+    Math.max(EDITOR_FONT_MIN, Math.min(EDITOR_FONT_MAX, (v || EDITOR_FONT_DEFAULT) + delta)));
   // The watch callback must not be rebuilt on every keystroke — doc is a new object each
   // render, so it is read through a ref instead of captured. Synced in an effect, the
   // same shape useDirWatch uses for its own callback ref.
@@ -84,8 +91,15 @@ export default function TerminalEditorPanel({
   }
 
   // Escape closes, but goes through the guard so it cannot throw away unsaved edits.
+  // Only keydowns born inside the panel: an Esc typed into a terminal (vim) or
+  // another tab belongs to that surface, not to this file.
+  const rootRef = useRef(null);
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") guard.guard(onClose); };
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (!rootRef.current?.contains(e.target)) return;
+      guard.guard(onClose);
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [guard, onClose]);
@@ -142,6 +156,7 @@ export default function TerminalEditorPanel({
 
   return (
     <div
+      ref={rootRef}
       className="h-full flex flex-col bg-bg border-l border-border-subtle relative shrink min-w-0"
       style={isDesktop ? { width, flexBasis: width, minWidth: EDITOR_PANEL_WIDTH.min } : undefined}
     >
@@ -203,7 +218,7 @@ export default function TerminalEditorPanel({
             onClick={() => {
               vibrate();
               if (isDiff) onOpenFile(diffAbsPath);
-              else onOpenFull(filePath);
+              else guard.guard(() => onOpenFull(filePath));
             }}
             title={isDiff ? t("git.openFile") : t("editor.openFull")}
             className="p-1 text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
@@ -267,6 +282,27 @@ export default function TerminalEditorPanel({
           />
         )}
       </div>
+
+      {/* Font size bar — only on the source view, where the compact editor renders. */}
+      {editable && (!showRendered || isHtmlPreview) && (
+        <div className="h-7 px-1.5 flex items-center justify-end gap-0.5 border-t border-border-subtle flex-shrink-0">
+          <button
+            onClick={() => { vibrate(); bumpFont(-1); }}
+            className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
+          >
+            −
+          </button>
+          <span className="min-w-[26px] text-center text-[10px] tabular-nums text-text-subtle" title={t("fileExplorer.fontSize")}>
+            {fontSize}
+          </span>
+          <button
+            onClick={() => { vibrate(); bumpFont(1); }}
+            className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
+          >
+            +
+          </button>
+        </div>
+      )}
 
       <UnsavedDialog
         isOpen={guard.asking}
