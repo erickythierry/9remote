@@ -9,11 +9,12 @@ import ClipboardModal from "@/features/remote/components/ClipboardModal";
 
 // The remote-screen chrome shared by Remote Desktop and the browser pane:
 // landscape sidebar · canvas stage · key/text controls · help + clipboard modals.
+// `bottomLayout` (browser pane): no sidebar, controls always below the canvas.
 // `surface` is useRemoteSurface's return; `canvasProps` carries view-specific canvas
 // state (lock screen, monitors, cursor shape...); `children` render over the canvas.
 export default function RemoteShell({
   surface: s, connected = true, clipboard, hasFrame = true, canvasProps, controlsProps,
-  Controls = RemoteControls,
+  Controls = RemoteControls, bottomLayout = false,
   onBack, onRefresh, onClose, onDesktopSwitch, onToggleDebug, debugOn, placeholder, children
 }) {
   const [showHelp, setShowHelp] = useState(false);
@@ -22,7 +23,7 @@ export default function RemoteShell({
 
   return (
     <div
-      className={`bg-bg text-text flex flex-col h-full w-full ${s.tallLandscape ? "" : "landscape:flex-row"}`}
+      className={`bg-bg text-text flex flex-col h-full w-full ${!bottomLayout && !s.tallLandscape ? "landscape:flex-row" : ""}`}
       style={{
         userSelect: "none",
         WebkitUserSelect: "none",
@@ -32,7 +33,7 @@ export default function RemoteShell({
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="flex flex-row flex-1 min-h-0">
-        {connected && (
+        {connected && !bottomLayout && (
           <RemoteSidebar
             streaming={s.streaming}
             canvasZoom={s.canvasZoom}

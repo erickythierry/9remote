@@ -148,9 +148,11 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
     onSecondaryClick: (x, y) => handlersRef.current.openContextMenuAt?.(x, y),
     onClipboard: (text) => clipboard.push(text)
   });
+  const stageLockRef = useRef(null);
   const surface = useRemoteSurface({
     emits, streaming: emits.streaming,
     storagePrefix: "remoteBrowser", defaultPointerMode: "direct", hoverMove: true, wheelMultiplier: BROWSER_INPUT.wheelMultiplier,
+    stageLockRef,
     intercept: (e, type) => handlersRef.current.intercept?.(e, type),
     interceptKey: (e) => handlersRef.current.interceptKey?.(e)
   });
@@ -171,16 +173,6 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
     ? tabs.find((t) => t.openerId === watchedId && t.id !== watchedId) || null
     : null;
 
-  // Popup gone → the parent stream restarts: the popup's stream start had
-  // fronted ITS tab, and without a restart the parent keeps streaming a
-  // background tab (stalled). A restart re-fronts it on the host side.
-  const prevPopupIdRef = useRef(null);
-  useEffect(() => {
-    const had = prevPopupIdRef.current;
-    prevPopupIdRef.current = popupTab?.id || null;
-    if (had && had !== popupTab?.id) setRestartTick((n) => n + 1);
-  }, [popupTab?.id]);
-
   const [prevWatched, setPrevWatched] = useState(null);
   if (prevWatched !== watchedId) {
     setPrevWatched(watchedId);
@@ -200,6 +192,11 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
   useEffect(() => {
     const bus = busRef?.current;
     if (!connected || !visible || !bus?.emit || !watchedId) return;
+    // While a popup floats, its stream must be the ONLY one on this connection:
+    // tiles carry no target id on the wire, so two live streams would paint both
+    // canvases over each other (and Chrome only screencasts the front tab
+    // anyway). Popup gone → this dep flips and the parent stream restarts.
+    if (popupTab?.id) return;
     let stopped = false;
     const rect = stageRef.current?.getBoundingClientRect();
     // A failed start leaves the pane input-dead (every browser:input throws
@@ -243,7 +240,7 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
       const toStop = streamedTargetIdRef.current || currentStartedId || watchedId;
       bus.emit("browser:stream.stop", { targetId: toStop });
     };
-  }, [busRef, connected, visible, watchedId, restartTick, viewportPreset, profile, isLocal, setActive, wsKey]);
+  }, [busRef, connected, visible, watchedId, restartTick, viewportPreset, profile, isLocal, setActive, wsKey, popupTab?.id]);
 
   // Re-show after display:none: the flip fires no resize event and a hidden
   // resize was ignored, so re-apply the canvas fit here or scale(0) blanks the stage.
@@ -391,7 +388,7 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
   const isMobileRef = useRef(false);
   useEffect(() => { isMobileRef.current = isMobile; }, [isMobile]);
   const stageSizeRef = useRef(null);
-  const stageLockRef = useRef(null);
+  const recalculateDisplaySize = surface.recalculateDisplaySize;
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
@@ -400,10 +397,14 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
       if (!visibleRef.current) return; // display:none reports 0×0
       const size = { w: Math.round(el.clientWidth), h: Math.round(el.clientHeight) };
       if (!size.w || !size.h) return;
+      const wasShrunk = stageLockRef.current?.kbShrunk;
       const lock = isMobileRef.current
         ? nextStageLock(stageLockRef.current, size)
         : { width: size.w, height: size.h, kbShrunk: false };
       stageLockRef.current = lock;
+      if (lock.kbShrunk !== wasShrunk) {
+        recalculateDisplaySize?.();
+      }
       const trueSize = { w: size.w, h: lock.kbShrunk ? lock.height : size.h };
       const last = stageSizeRef.current;
       stageSizeRef.current = trueSize;
@@ -418,7 +419,7 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
       clearTimeout(timer);
       ro.disconnect();
     };
-  }, [connected, stageRef]);
+  }, [connected, stageRef, recalculateDisplaySize]);
 
   const pickKey = (el) => el?.selector || el?.tag || "element";
   const addPicked = (els) => {
@@ -883,6 +884,7 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
           hasFrame={hasFrame}
           onRefresh={() => setRestartTick((n) => n + 1)}
           Controls={BrowserControls}
+          bottomLayout
           controlsProps={{
             onNavBack: () => { refreshNav(); invoke("back", { targetId: watchedId }); },
             onNavForward: () => { refreshNav(); invoke("forward", { targetId: watchedId }); },

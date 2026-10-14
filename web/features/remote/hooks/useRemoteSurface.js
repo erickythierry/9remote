@@ -15,7 +15,8 @@ import { REMOTE_CONFIG } from "@/features/remote/constants/REMOTE_CONFIG";
 // let a host view claim an event before the default input pipeline sees it.
 export function useRemoteSurface({
   emits, streaming, hostPlatform,
-  storagePrefix = "remoteDesktop", defaultPointerMode = REMOTE_CONFIG.pointerMode, hoverMove = false, wheelMultiplier, intercept, interceptKey
+  storagePrefix = "remoteDesktop", defaultPointerMode = REMOTE_CONFIG.pointerMode, hoverMove = false, wheelMultiplier, intercept, interceptKey,
+  stageLockRef
 }) {
   const key = (name) => `${storagePrefix}.${name}`;
   const [showTextPanel, setShowTextPanel] = usePersistedState(key("showTextPanel"), true);
@@ -52,7 +53,7 @@ export function useRemoteSurface({
     emitMouseDragSelect, emitKeyPress, emitTypeText, emitScroll, emitBoostStream
   };
 
-  const canvas = useCanvas(socketEmitFunctions);
+  const canvas = useCanvas(socketEmitFunctions, { stageLockRef });
   const {
     canvasRef, canvasContainerRef, canvasZoom, canvasPan, fitScale,
     getCanvasCoordinates, centerVirtualCursor, startHandHold, releaseHandHold,
@@ -184,6 +185,7 @@ export function useRemoteSurface({
     emitKeyDirect,
     interactionHandler,
     onCanvasKeyDown,
-    emitRequestScreenWithHashes
+    emitRequestScreenWithHashes,
+    recalculateDisplaySize: canvas.recalculateDisplaySize
   };
 }

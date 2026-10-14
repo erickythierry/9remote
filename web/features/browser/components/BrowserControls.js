@@ -167,7 +167,7 @@ export default function BrowserControls({
   };
 
   return (
-    <div className={`bg-bg select-none relative landscape:flex landscape:flex-col landscape:shrink-0 ${tallLandscape || controlsHidden ? "" : "landscape:h-full landscape:justify-end"} ${controlsHidden ? "landscape:w-12" : tallLandscape ? "landscape:w-full landscape:pl-12" : "landscape:w-64"}`}>
+    <div className={`bg-bg select-none relative landscape:flex landscape:flex-col landscape:shrink-0 ${controlsHidden ? "landscape:w-12" : "landscape:w-full"}`}>
       {/* Hidden sink drives native keyboard. */}
       <textarea
         ref={textInputRef}
@@ -204,7 +204,7 @@ export default function BrowserControls({
 
       {/* Full controls — hidden in landscape when controlsHidden (sink stays for soft keyboard) */}
       <div className={controlsHidden ? "landscape:hidden" : "contents"}>
-      <div className={`${showTextPanel ? "flex" : "hidden"} landscape:flex ${tallLandscape ? "" : "landscape:flex-col"} relative z-30 px-2 py-1 gap-2 ${tallLandscape ? "landscape:px-0" : "landscape:gap-1 landscape:order-last"}`}>
+      <div className={`${showTextPanel ? "flex" : "hidden"} landscape:flex ${tallLandscape ? "" : "landscape:flex-col"} relative z-30 px-2 py-1 gap-2 ${tallLandscape ? "landscape:px-0" : "landscape:gap-1"}`}>
         <div className="relative flex-1">
           <CommandSuggestions
             value={textInputValue}
