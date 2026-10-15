@@ -429,7 +429,7 @@ export default function RemoteControls({
         );
         const enterBtn = pinned ? renderPoolKey(pinned, "pinned", true) : null;
         return (
-          <div className={`px-2 py-1 safe-area-bottom ${tallLandscape ? "landscape:px-0" : "landscape:py-2"}`}>
+          <div className={`px-2 py-1 ${inputMode === "mouse" ? "" : "safe-area-bottom"} ${tallLandscape ? "landscape:px-0" : "landscape:py-2"}`}>
             {/* Portrait: modifier scroll + pinned Enter */}
             <div className="flex items-center gap-1.5 landscape:hidden">
               <div className={`${rowClass} flex-1 min-w-0`}>

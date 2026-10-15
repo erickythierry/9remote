@@ -12,6 +12,7 @@ export default function Btn({ active, primary, pinned, children, className = "",
   return (
     <button
       type="button"
+      onPointerDown={(e) => e.preventDefault()}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={`${base} ${variant} ${className}`}

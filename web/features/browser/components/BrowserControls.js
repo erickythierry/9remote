@@ -188,7 +188,7 @@ export default function BrowserControls({
         data-lpignore="true"
         data-1p-ignore="true"
         data-form-type="other"
-        name="remote-batch-input"
+        name="remote-keyboard-sink"
         style={{
           position: "absolute", opacity: 0.01, width: 1, height: 1, border: 0, padding: 0,
           left: 0, top: 0, fontSize: 16, resize: "none", pointerEvents: "none", zIndex: -1
@@ -240,6 +240,7 @@ export default function BrowserControls({
           {textInputValue ? (
             <button
               type="button"
+              onPointerDown={(e) => e.preventDefault()}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => { onTextInputChange(""); panelInputRef.current?.focus(); }}
               title={t("voice.clear")}
@@ -250,6 +251,7 @@ export default function BrowserControls({
           ) : (
             <button
               type="button"
+              onPointerDown={(e) => e.preventDefault()}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => setHistoryOpen(true)}
               title={t("history.title")}
@@ -264,6 +266,7 @@ export default function BrowserControls({
           <div className="relative shrink-0">
             <button
               type="button"
+              onPointerDown={(e) => e.preventDefault()}
               onMouseDown={(e) => e.preventDefault()}
               onClick={toggleVoice}
               disabled={!streaming}
@@ -280,6 +283,7 @@ export default function BrowserControls({
           variant="primary"
           size="sm"
           className="!px-2.5 shrink-0"
+          onPointerDown={(e) => e.preventDefault()}
           onMouseDown={(e) => e.preventDefault()}
           onClick={sendText}
           disabled={!streaming}
@@ -305,6 +309,7 @@ export default function BrowserControls({
                 </div>
                 {rIdx === 0 && (
                   <button
+                    onPointerDown={(e) => e.preventDefault()}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => { vibrate(); setShowCustomize(true); }}
                     className="shrink-0 h-10 w-10 flex items-center justify-center text-text-muted hover:text-text bg-surface-2 hover:bg-surface-3 rounded-brand transition-all duration-150 ease-out"
@@ -410,7 +415,7 @@ export default function BrowserControls({
         );
         const enterBtn = pinned ? renderPoolKey(pinned, "pinned", true) : null;
         return (
-          <div className={`px-2 py-1 safe-area-bottom ${tallLandscape ? "landscape:px-0" : "landscape:py-2"}`}>
+          <div className={`px-2 py-1 ${inputMode === "mouse" ? "" : "safe-area-bottom"} ${tallLandscape ? "landscape:px-0" : "landscape:py-2"}`}>
             {/* Portrait: modifier scroll + pinned Enter */}
             <div className="flex items-center gap-1.5 landscape:hidden">
               <div className={`${rowClass} flex-1 min-w-0`}>

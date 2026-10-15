@@ -116,6 +116,9 @@ export default function RemoteCanvas({
 
   // Re-focus canvas on every pointerdown so clicks never "steal" focus away.
   const handlePointerDown = (e) => {
+    // Soft keyboard on: a touch tap must not move focus off the sink textarea
+    // (the blur would close the keyboard) — cancel the native focus default.
+    if (keyboardOn && e.pointerType !== "mouse") e.preventDefault();
     const ae = document.activeElement;
     if (ae?.name === "remote-batch-input") {
       if (keyboardOn) {
