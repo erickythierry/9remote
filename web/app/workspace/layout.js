@@ -690,7 +690,8 @@ export default function WorkspaceLayout({ children }) {
           profile: st.workspaceProfiles[wsKey] || "default",
           // First browser tab of this workspace gets its own Chrome window.
           newWindow: !windowId,
-          windowId: windowId || undefined
+          windowId: windowId || undefined,
+          workspaceId: wsKey
         }
       }, (res) => {
         if (!res?.ok || !res.id) return;

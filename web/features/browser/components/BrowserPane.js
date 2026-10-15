@@ -616,7 +616,7 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
       }
       const res = goLive
         ? await invoke("go", { targetId: watchedId, url })
-        : await invoke("open", { url });
+        : await invoke("open", { url, workspaceId: wsKey });
       setLoading(false);
       if (bootId) {
         const st = useBrowserStore.getState();
@@ -734,6 +734,7 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
     return (
     <>
       <button
+        onPointerDown={(e) => e.preventDefault()}
         onClick={() => { vibrate(); setGrabIntent((g) => (g === "pick" ? null : "pick")); setInspectedElement(null); setHoverRect(null); }}
         disabled={!frame}
         aria-label={t("sites.browserPanePickTitle")}
@@ -747,6 +748,7 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
       </button>
       <div className="relative">
         <button
+          onPointerDown={(e) => e.preventDefault()}
           onClick={() => { vibrate(); setVpMenu((v) => !v); }}
           aria-label={t("sites.browserPaneDeviceTitle")}
           className={`${toolBtn} shrink-0 flex items-center text-xs font-medium transition-colors ${
@@ -764,6 +766,7 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
               {VIEWPORT_PRESETS.map((opt) => (
                 <button
                   key={opt.label}
+                  onPointerDown={(e) => e.preventDefault()}
                   onClick={() => {
                     vibrate();
                     setViewportPreset(opt.w ? { width: opt.w, height: opt.h, mobile: !!opt.mobile } : null);
@@ -865,6 +868,7 @@ export default function BrowserPane({ busRef, connected = false, visible = true,
         {/* Profile chip — Chrome's avatar button: the ONLY menu door now
             (tools, profiles, import, viewport all live behind it) */}
         <button
+          onPointerDown={(e) => e.preventDefault()}
           onClick={() => { setMenuSection(null); setMenuOpen(true); }}
           className="h-7 shrink-0 flex items-center gap-1.5 px-1.5 rounded-[6px] text-text-muted hover:text-text hover:bg-surface-2 transition-colors"
           title={profile}
