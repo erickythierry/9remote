@@ -1,8 +1,8 @@
 import chalk from "chalk";
 
-// NODE_ENV=development only toggles local dev behavior (Vite proxy, logs) — the
+// NREMOTE_ENV=development only toggles local dev behavior (Vite proxy, logs) — the
 // target zone stays prod. Override with NREMOTE_WORKER_URL=https://dev.9remote.cc.
-const IS_DEV = process.env.NODE_ENV === "development";
+const IS_DEV = process.env.NREMOTE_ENV === "development";
 export const IS_DEV_ENV = IS_DEV;
 export const WORKER_URL = process.env.NREMOTE_WORKER_URL
   || (typeof __DEFAULT_WORKER_URL__ !== "undefined" ? __DEFAULT_WORKER_URL__ : "https://9remote.cc");

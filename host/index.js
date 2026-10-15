@@ -51,7 +51,7 @@ import { loadSettings, loadKey } from "./cli/utils/state.js";
 import { REMOTE_CONFIG } from "./features/remote/REMOTE_CONFIG.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
-const IS_DEV = process.env.NODE_ENV === "development";
+const IS_DEV = process.env.NREMOTE_ENV === "development";
 const VITE_PORT = 5173;
 
 const UI_DIST = [
@@ -500,7 +500,7 @@ export async function startServer() {
       if (io) { io.emit("server:shutdown"); io.close(() => logger.info("✓ Socket.IO closed")); }
       // Orphaned Chrome keeps the profile dir locked — the next boot's launch fails.
       // Dev: keep Chrome alive so the next nodemon boot adopts it (tabs/state intact).
-      if (process.env.NODE_ENV !== "development") {
+      if (process.env.NREMOTE_ENV !== "development") {
         try { await closeAllBrowsers(); } catch { /* best-effort */ }
       }
       await new Promise((r) => setTimeout(r, 500));
