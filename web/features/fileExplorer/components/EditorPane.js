@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Save, Eye, FileCode, Globe } from "@/shared/components/ui/Icon";
 import { vibrate } from "@/shared/utils/vibration";
 import { useI18n } from "@/shared/i18n";
-import { isDiffPath, getTextPreviewKind } from "../constants/fileExplorer.js";
+import { isDiffPath, parseRepoDiffPath, getTextPreviewKind, resolveDiffFilePath } from "../constants/fileExplorer.js";
 import { openHtmlPreviewInBrowser } from "../lib/previewInBrowser.js";
 import CodeEditor from "./CodeEditor.js";
 import DiffView from "./DiffView.js";
@@ -23,7 +23,7 @@ import { useFileDocument } from "../hooks/useFileDocument.js";
  */
 export default function EditorPane({
   filePath, workspace, fileBus, isActive,
-  onCursorChange, onDirtyChange, onRegisterSaver, previewSeq = 0
+  onCursorChange, onDirtyChange, onRegisterSaver, onOpenFile, previewSeq = 0
 }) {
   const { t } = useI18n();
   const editable = !isDiffPath(filePath) && !isPreviewable(filePath);
@@ -59,11 +59,11 @@ export default function EditorPane({
   }
 
   // HTML preview opens in the remote browser pane; this pane stays on source.
-  const openBrowserPreview = useCallback(() => {
-    openHtmlPreviewInBrowser(fileBus, filePath).then((r) => {
+  const openBrowserPreview = useCallback((path) => {
+    openHtmlPreviewInBrowser(fileBus, path).then((r) => {
       if (!r.ok) setPreviewError(r.error || t("editor.previewFailed"));
     });
-  }, [fileBus, filePath, t]);
+  }, [fileBus, t]);
   // A Preview open (context menu, AI artifact) takes HTML straight there.
   useEffect(() => {
     if (!isHtmlPreview || previewSeq <= 0) return;
@@ -106,7 +106,46 @@ export default function EditorPane({
   }, [isActive, editable, doc]);
 
   if (isDiffPath(filePath)) {
-    return <DiffView diffPath={filePath} workspace={workspace} fileBus={fileBus} />;
+    // The diff body carries no chrome of its own — a slim bar gives it the same
+    // open/preview actions the editor view has, so a change can jump to the file.
+    const d = parseRepoDiffPath(filePath);
+    const diffAbsPath = resolveDiffFilePath(filePath, workspace);
+    const exists = d.status !== "D";
+    const isHtml = exists && getTextPreviewKind(d.filePath) === "html";
+    return (
+      <div className="h-full flex flex-col">
+        {previewError && (
+          <div className="px-4 py-2 text-sm text-red-400 bg-red-500/15 border-b border-red-500/40 break-words">
+            {previewError}
+          </div>
+        )}
+        {(isHtml || (exists && onOpenFile)) && (
+          <div className="px-3 py-1.5 flex items-center justify-end bg-surface border-b border-border-subtle flex-shrink-0">
+            {isHtml && (
+              <button
+                onClick={() => { vibrate(); openBrowserPreview(diffAbsPath); }}
+                title={t("editor.previewInBrowser")}
+                className="p-1 text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
+              >
+                <Globe size={13} />
+              </button>
+            )}
+            {exists && onOpenFile && (
+              <button
+                onClick={() => { vibrate(); onOpenFile(diffAbsPath); }}
+                title={t("git.openFile")}
+                className="p-1 text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
+              >
+                <FileCode size={13} />
+              </button>
+            )}
+          </div>
+        )}
+        <div className="flex-1 min-h-0">
+          <DiffView diffPath={filePath} workspace={workspace} fileBus={fileBus} />
+        </div>
+      </div>
+    );
   }
   if (isPreviewable(filePath)) {
     return <FilePreview filePath={filePath} fileBus={fileBus} />;
@@ -130,7 +169,7 @@ export default function EditorPane({
         <div className="px-3 py-1.5 flex items-center justify-end bg-surface border-b border-border-subtle flex-shrink-0">
           {isHtmlPreview ? (
             <button
-              onClick={() => { vibrate(); openBrowserPreview(); }}
+              onClick={() => { vibrate(); openBrowserPreview(filePath); }}
               title={t("editor.previewInBrowser")}
               className="p-1 text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
             >

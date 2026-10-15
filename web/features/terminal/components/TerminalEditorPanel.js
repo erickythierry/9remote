@@ -8,7 +8,7 @@ import { useI18n } from "@/shared/i18n";
 import { PANEL_HEADER_HEIGHT } from "@/shared/constants/layout";
 import { EDITOR_PANEL_WIDTH } from "../constants/terminalConfig";
 import { resolveFileIcon } from "@/features/fileExplorer/constants/fileIcons";
-import { isDiffPath, parseRepoDiffPath, makeDiffPath, GIT_STATUS_COLORS, getTextPreviewKind, FILE_WATCH, STORAGE_KEYS, EDITOR_FONT_DEFAULT, EDITOR_FONT_MIN, EDITOR_FONT_MAX } from "@/features/fileExplorer/constants/fileExplorer";
+import { isDiffPath, parseRepoDiffPath, makeDiffPath, resolveDiffFilePath, GIT_STATUS_COLORS, getTextPreviewKind, FILE_WATCH, STORAGE_KEYS, EDITOR_FONT_DEFAULT, EDITOR_FONT_MIN, EDITOR_FONT_MAX } from "@/features/fileExplorer/constants/fileExplorer";
 import { usePersistedState } from "@/shared/hooks/usePersistedState";
 import { isPreviewable } from "@/features/fileExplorer/components/FilePreview";
 import { useFileDocument } from "@/features/fileExplorer/hooks/useFileDocument";
@@ -36,13 +36,8 @@ export default function TerminalEditorPanel({
   const diff = isDiff ? parseRepoDiffPath(filePath) : null;
   const diffRepo = diff?.repoPath || workspace;
   const displayPath = isDiff ? diff.filePath : filePath;
-  // What the editor would open for this diff. git reports repo-relative paths, so a diff
-  // read from a nested repo must carry its repo along or the file is not found.
-  const diffAbsPath = diff
-    ? (diff.repoPath
-      ? `${diff.repoPath.replace(/\/$/, "")}/${diff.filePath}`
-      : diff.filePath.startsWith("/") ? diff.filePath : `${workspace?.replace(/\/$/, "") || ""}/${diff.filePath}`)
-    : "";
+  // What the editor or preview would open for this diff.
+  const diffAbsPath = diff ? resolveDiffFilePath(filePath, workspace) : "";
   const editable = !!filePath && !isDiff && !isPreviewable(filePath);
 
   const doc = useFileDocument({ filePath: editable ? filePath : "", fileBus });
@@ -64,6 +59,9 @@ export default function TerminalEditorPanel({
   // HTML renders in the remote browser pane, not in-place: its "preview" hands a
   // loopback preview URL to the browser view instead of swapping this panel.
   const isHtmlPreview = previewKind === "html";
+  // A diff over an html file can still be previewed — on its resolved disk path,
+  // not the diff tab id. Deleted files have nothing on disk to serve.
+  const diffHtmlPreview = isDiff && diff.status !== "D" && getTextPreviewKind(diff.filePath) === "html";
   // A non-zero previewSeq is the opener saying "show this rendered" — the tree's Preview
   // action, and every artifact the AI opens. Read at mount too, not only on a later
   // change: the panel is mounted BY that first open, so a seq compared against its own
@@ -125,11 +123,11 @@ export default function TerminalEditorPanel({
   });
 
   // HTML preview opens in the remote browser pane; this panel stays on source.
-  const openBrowserPreview = useCallback(() => {
-    openHtmlPreviewInBrowser(fileBus, filePath).then((r) => {
+  const openBrowserPreview = useCallback((path) => {
+    openHtmlPreviewInBrowser(fileBus, path).then((r) => {
       if (!r.ok) setPreviewError(r.error || t("editor.previewFailed"));
     });
-  }, [fileBus, filePath, t]);
+  }, [fileBus, t]);
   // An artifact or Preview open takes HTML straight to the browser pane.
   useEffect(() => {
     if (!isHtmlPreview || previewSeq <= 0) return;
@@ -178,10 +176,20 @@ export default function TerminalEditorPanel({
           </span>
         )}
 
+        {diffHtmlPreview && (
+          <button
+            onClick={() => { vibrate(); openBrowserPreview(diffAbsPath); }}
+            title={t("editor.previewInBrowser")}
+            className="p-1 text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
+          >
+            <Globe size={13} />
+          </button>
+        )}
+
         {previewKind && (
           isHtmlPreview ? (
             <button
-              onClick={() => { vibrate(); openBrowserPreview(); }}
+              onClick={() => { vibrate(); openBrowserPreview(filePath); }}
               title={t("editor.previewInBrowser")}
               className="p-1 text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
             >
