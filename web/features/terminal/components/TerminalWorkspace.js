@@ -21,6 +21,7 @@ import TerminalSidebar from "@/features/terminal/components/TerminalSidebar";
 import TerminalStatusBar, { MobileStatusStrip } from "@/features/terminal/components/TerminalStatusBar";
 import MobileDock from "@/features/mobile/components/MobileDock";
 import TerminalRightPanel from "@/features/terminal/components/TerminalRightPanel";
+import { useWorkspaceChangedCount } from "@/features/terminal/hooks/useWorkspaceChangedCount";
 import TerminalEditorPanel from "@/features/terminal/components/TerminalEditorPanel";
 import OverflowTip from "@/shared/components/ui/OverflowTip";
 import TerminalBeam from "@/shared/components/ui/TerminalBeam";
@@ -161,6 +162,9 @@ function TerminalWorkspace({
   // workspacePath of the focused terminal (a workspace migrated from a group has no path).
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
   const baseRoot = activeWorkspace?.path || activeSession?.workspacePath || null;
+  // One shared poll for the workspace's changed counts — the git tab badge reads perRepo
+  // and every pane badge reads count, so the two can never disagree.
+  const changedCounts = useWorkspaceChangedCount(baseRoot, panelsFileBus);
   // A pane's folder button reveals its live cwd into the files tab only — git/worktrees
   // tabs keep the workspace root, so a deep cwd must not blank their repo scan.
   const rightPanelRoots = useTerminalStore((s) => s.rightPanelRoots);
@@ -878,6 +882,7 @@ function TerminalWorkspace({
               onAddWorkspace={onAddWorkspace}
               homeDir={homeDir}
               hiddenRepos={workspaceHiddenRepos}
+              changedPerRepo={changedCounts.perRepo}
               onHiddenReposChange={activeWorkspace && onSetHiddenRepos ? handleHiddenReposChange : null}
               isDesktop={isDesktop}
             />
