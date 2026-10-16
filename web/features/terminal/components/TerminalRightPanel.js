@@ -430,7 +430,7 @@ function TerminalRightPanel({
                 onToggle={() => setOpenRepo(activeRepo === repo.path ? "" : repo.path)}
                 onHide={canHideRepo(repo) ? () => hideRepo(repo.path) : null}
               >
-                <ScmPanel workspace={repo.path} fileBus={activeFileBus} onOpenFile={onOpenFile} tagDiffWithRepo />
+                <ScmPanel workspace={repo.path} fileBus={activeFileBus} onOpenFile={onOpenFile} tagDiffWithRepo onBranchChanged={refreshRepos} />
               </RepoSection>
             ))}
 

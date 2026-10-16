@@ -5,12 +5,15 @@ import { ChevronDown, ChevronRight, GitBranch, Plus, RefreshCw, X, ExternalLink,
 import { vibrate } from "@/shared/utils/vibration";
 import ConfirmDialog from "@/shared/components/ui/ConfirmDialog";
 import FileContextMenu from "@/shared/components/ui/FileContextMenu";
+import BranchPicker from "./BranchPicker.js";
 import { useI18n } from "@/shared/i18n";
 import useIsTouch from "@/shared/hooks/useIsTouch.js";
 import { GIT_STATUS_COLORS, GIT_REFRESH_EVENT, makeDiffPath, makeRepoDiffPath } from "../constants/fileExplorer.js";
 import { resolveFileIcon } from "../constants/fileIcons.js";
 import { commitSummary, pushSummary, pullSummary } from "../lib/gitOutput.js";
 import { addToGitignore } from "../lib/gitignore.js";
+import { refreshWorkspaceGit } from "@/features/terminal/hooks/useWorkspaceGit";
+import { branchErrorText } from "../lib/branchErrors.js";
 
 const SECTION_CHANGES = "changes";
 const SECTION_UNTRACKED = "untracked";
@@ -79,7 +82,7 @@ const ScmFileRow = memo(function ScmFileRow({ file, workspace, isUntracked, t, i
   );
 });
 
-export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRepo = false }) {
+export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRepo = false, onBranchChanged }) {
   const { t } = useI18n();
   const isTouch = useIsTouch();
   const [branch, setBranch] = useState("");
@@ -98,6 +101,11 @@ export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRe
   const [pendingPush, setPendingPush] = useState(false);
   const [commitMenu, setCommitMenu] = useState(null);
   const [moreMenu, setMoreMenu] = useState(null);
+  const [branchMenu, setBranchMenu] = useState(null);
+  const [branchList, setBranchList] = useState([]);
+  const [branchListLoading, setBranchListLoading] = useState(false);
+  // { branch, create, files } while the user decides whether to stash.
+  const [stashPrompt, setStashPrompt] = useState(null);
 
   const reload = useCallback(async () => {
     if (!workspace || !fileBus) return;
@@ -240,6 +248,32 @@ export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRe
     set({ x: r.right, y: r.bottom + 4 });
   }, []);
 
+  const openBranchPicker = useCallback(async (e) => {
+    anchorMenu(e, setBranchMenu);
+    setBranchListLoading(true);
+    const res = await fileBus.gitBranchList?.(workspace);
+    setBranchListLoading(false);
+    setBranchList(res?.success ? res.branches : []);
+  }, [workspace, fileBus, anchorMenu]);
+
+  // Tries the plain switch first: git carries local changes along unless the target
+  // branch touches the same files, and only then is the stash question worth asking.
+  const switchTo = useCallback(async (target, { create = false, stash = false } = {}) => {
+    setBranchMenu(null);
+    const res = await fileBus.gitBranchSwitch(workspace, target, { create, stash });
+    if (!res?.success && res?.code === "dirtyConflict" && !stash) {
+      return setStashPrompt({ branch: target, create, files: res.files || [] });
+    }
+    setResult(res?.success
+      ? { ok: true, text: t(res.stashed ? "git.branchStashed" : "git.branchSwitched", { name: res.branch }) }
+      : { ok: false, text: branchErrorText(t, res, target) });
+    if (!res?.success) return;
+    window.dispatchEvent(new CustomEvent(GIT_REFRESH_EVENT));
+    refreshWorkspaceGit(workspace);
+    reload();
+    onBranchChanged?.();
+  }, [workspace, fileBus, reload, t, onBranchChanged]);
+
   // Right-click context menu (vscode-style)
   const [ctxMenu, setCtxMenu] = useState(null);
   const copyToClipboard = useCallback(async (text) => {
@@ -309,8 +343,15 @@ export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRe
     <div className="flex flex-col h-full text-sm text-text">
       <div className="px-3 pt-3 pb-2 space-y-2">
         <div className="flex items-center gap-2">
-          <GitBranch size={14} className="text-text-muted" />
-          <span className="text-xs text-text truncate flex-1">{branch || "—"}</span>
+          <button
+            type="button"
+            title={t("git.switchBranch")}
+            onClick={openBranchPicker}
+            className="flex items-center gap-2 min-w-0 flex-1 text-left rounded hover:bg-surface-2 -mx-1 px-1 py-0.5"
+          >
+            <GitBranch size={14} className="text-text-muted flex-shrink-0" />
+            <span className="text-xs text-text truncate flex-1">{branch || "—"}</span>
+          </button>
           {ahead > 0 && <span className="text-[10px] font-medium px-1.5 rounded-brand bg-brand-500/15 text-brand-500">↑{ahead}</span>}
           {behind > 0 && <span className="text-[10px] font-medium px-1.5 rounded-brand bg-surface-3 text-text-muted">↓{behind}</span>}
           <button
@@ -425,6 +466,30 @@ export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRe
           onClose={() => setCommitMenu(null)}
         />
       )}
+
+      {branchMenu && (
+        <BranchPicker
+          anchor={branchMenu}
+          branches={branchList}
+          loading={branchListLoading}
+          onSelect={(b) => switchTo(b.name)}
+          onCreate={(name) => switchTo(name, { create: true })}
+          onClose={() => setBranchMenu(null)}
+        />
+      )}
+
+      <ConfirmDialog
+        isOpen={!!stashPrompt}
+        onClose={() => setStashPrompt(null)}
+        onConfirm={() => { const p = stashPrompt; setStashPrompt(null); switchTo(p.branch, { create: p.create, stash: true }); }}
+        title={t("git.branchStashConfirmTitle")}
+        message={stashPrompt ? t("git.branchStashConfirmMessage", {
+          name: stashPrompt.branch,
+          files: stashPrompt.files.length ? ` (${stashPrompt.files.join(", ")})` : ""
+        }) : ""}
+        confirmText={t("git.branchStashAndSwitch")}
+        cancelText={t("common.cancel")}
+      />
 
       {moreMenu && (
         <FileContextMenu

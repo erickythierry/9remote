@@ -223,6 +223,12 @@ export function makeFileBus(getBus, getProtocol = () => null, getLiveBus = getBu
     bus.emit("gitBranchCheckout", { repoPath, branch, create }, resolve);
   }),
 
+  gitBranchSwitch: (repoPath, branch, opts = {}) => new Promise((resolve) => {
+    const bus = getBus();
+    if (!bus) return resolve({ success: false, code: "notConnected", error: "Not connected" });
+    bus.emit("gitBranchSwitch", { repoPath, branch, ...opts }, resolve);
+  }),
+
   gitAdd: (repoPath, files) => new Promise((resolve) => {
     const bus = getBus();
     if (!bus) return resolve({ success: false, error: "Not connected" });
