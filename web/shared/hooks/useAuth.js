@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { API_ENDPOINTS, TUNNEL_VERIFY_RETRY_MAX, TUNNEL_VERIFY_RETRY_INTERVAL_MS, TUNNEL_VERIFY_TIMEOUT_MS, CONNECT_TIMEOUT_MS, LOCAL_HOST_STATE } from "@/shared/constants/API";
+import { API_ENDPOINTS, TUNNEL_VERIFY_RETRY_MAX, TUNNEL_VERIFY_RETRY_INTERVAL_MS, TUNNEL_VERIFY_TIMEOUT_MS, CONNECT_TIMEOUT_MS, LOCAL_HOST_STATE, IS_SELF_HOSTED } from "@/shared/constants/API";
 import { headOf, tailOf } from "@/shared/utils/apiKey";
 import { setTrust } from "@/shared/transport/lib/deviceTrust";
 import { isLocalHostNetwork, isLoopbackOrigin, hostOriginFrom } from "@/shared/utils/localOrigin";
@@ -43,6 +43,9 @@ export const verifyKeyWithAgent = verifyKeyWithHost;
 
 // Resolve origin where host answers, or null if remote.
 async function resolveHostOrigin() {
+  // Self-hosted VPN client: this shortcut reads the host state over loopback, which is the phone itself.
+  // The regular /api/connect path below reaches the host at this origin instead, host keys included.
+  if (IS_SELF_HOSTED && !isLoopbackOrigin()) return null;
   if (!isLoopbackOrigin()) return isLocalHostNetwork() ? window.location.origin : null;
   return hostOriginFrom(await fetchHostState());
 }

@@ -6,8 +6,11 @@
 const isBrowser = typeof location !== "undefined";
 export const WORKER_API = process.env.NEXT_PUBLIC_WORKER_URL
   || (isBrowser ? location.origin : "https://9remote.cc");
-export const HOMEPAGE_URL = "https://9remote.cc/";
-export const DOCS_URL = "https://docs.9remote.cc/";
+// Self-hosted build: the host serving the page is the only server; no 9remote.cc links.
+export const IS_SELF_HOSTED = process.env.NEXT_PUBLIC_SELF_HOSTED === "1";
+export const HOMEPAGE_URL = IS_SELF_HOSTED && isBrowser ? `${location.origin}/` : "https://9remote.cc/";
+// Self-hosted has no docs site; Navbar/Footer read this and drop the link when empty.
+export const DOCS_URL = IS_SELF_HOSTED ? "" : "https://docs.9remote.cc/";
 
 // Port the host serves its local API on. Mirrors host/lib/constants.js
 // SERVER_PORT — the two runtimes share no module, only this number.

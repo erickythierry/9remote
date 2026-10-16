@@ -1,4 +1,5 @@
 import { Geist, Geist_Mono } from "next/font/google";
+import "@app-fonts";
 import "./globals.css";
 import { ThemeProvider } from "@/shared/theme/ThemeProvider";
 import { STORAGE_KEY, DEFAULT_THEME } from "@/shared/theme/themeConfig";
@@ -74,7 +75,9 @@ export default function RootLayout({ children }) {
       <head>
         {/* Material Symbols — icon font of the host dashboard port. A <link> so
             the load never depends on CSS-bundler @import ordering. */}
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,300..400,0..1,0&display=block" />
+        {process.env.NEXT_PUBLIC_SELF_HOSTED !== "1" && (
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,300..400,0..1,0&display=block" />
+        )}
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

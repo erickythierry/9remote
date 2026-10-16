@@ -32,8 +32,24 @@ export const RTC_RESTART = {
 // when the public IP actually changed (real network handover) — a timer would
 // re-spam the DO on every long app switch even though the NAT never moved.
 // This talks to public STUN only: no DO call, no host involvement.
+// Self-hosted: no third-party STUN; inside the VPN peers reach each other on host candidates.
+const SELF_HOSTED_BUILD = process.env.NEXT_PUBLIC_SELF_HOSTED === "1";
+
+// Multiple STUN servers provide redundant CGNAT mappings for mobile carriers.
+export const DEFAULT_ICE_SERVERS = SELF_HOSTED_BUILD ? [] : [
+  { urls: [
+    "stun:stun.l.google.com:19302",
+    "stun:stun1.l.google.com:19302",
+    "stun:stun2.l.google.com:19302",
+    "stun:stun3.l.google.com:19302",
+    "stun:stun4.l.google.com:19302"
+  ] },
+  { urls: "stun:global.stun.twilio.com:3478" },
+  { urls: "stun:stun.cloudflare.com:3478" }
+];
+
 export const STUN_PROBE = {
-  urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"],
+  urls: SELF_HOSTED_BUILD ? [] : ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"],
   timeoutMs: 2500,
   // Don't re-probe more often than this — resume can fire in bursts.
   minIntervalMs: 15000

@@ -1,7 +1,7 @@
 import { BaseProtocol } from "./BaseProtocol";
 import { encode, decode, decodeFrame, encodeFragments, createReassembler } from "./codec";
 import { API_ENDPOINTS } from "@/shared/constants/API";
-import { ADAPTER_STATE, CHANNELS, CONTROL_RTC_MAX_BYTES, DEAD_PATH_POLL_MS, FILE_TRANSFER, RTC_CONNECT_TIMEOUT_MS, RTC_ICE_TIMEOUT_MS, RTC_HEARTBEAT_INTERVAL_MS, RTC_HEARTBEAT_TIMEOUT_MS, RTC_HEARTBEAT_LEGACY_TIMEOUT_MS, RTC_DC_STALL_SENDS, RTC_DC_STALL_WINDOW_MS } from "@/shared/constants/transport";
+import { DEFAULT_ICE_SERVERS, ADAPTER_STATE, CHANNELS, CONTROL_RTC_MAX_BYTES, DEAD_PATH_POLL_MS, FILE_TRANSFER, RTC_CONNECT_TIMEOUT_MS, RTC_ICE_TIMEOUT_MS, RTC_HEARTBEAT_INTERVAL_MS, RTC_HEARTBEAT_TIMEOUT_MS, RTC_HEARTBEAT_LEGACY_TIMEOUT_MS, RTC_DC_STALL_SENDS, RTC_DC_STALL_WINDOW_MS } from "@/shared/constants/transport";
 import { debugLog } from "@/shared/utils/debugLog";
 import { termLog } from "@/shared/utils/termLog";
 import { getTrust, setTrust, getPendingFp2, takePendingFp2, hostFingerprint, verifySdpSignature } from "./lib/deviceTrust";
@@ -176,18 +176,7 @@ export class WebRtcProtocol extends BaseProtocol {
       this._closePeer(`connect-timeout (state=${this._state})`);
     }, RTC_CONNECT_TIMEOUT_MS);
 
-    // Multiple STUN servers provide redundant CGNAT mappings for mobile carriers.
-    let iceServers = [
-      { urls: [
-        "stun:stun.l.google.com:19302",
-        "stun:stun1.l.google.com:19302",
-        "stun:stun2.l.google.com:19302",
-        "stun:stun3.l.google.com:19302",
-        "stun:stun4.l.google.com:19302"
-      ] },
-      { urls: "stun:global.stun.twilio.com:3478" },
-      { urls: "stun:stun.cloudflare.com:3478" }
-    ];
+    let iceServers = DEFAULT_ICE_SERVERS;
     this._useTurn = !!(ctx.useTurn || ctx.profile?.rtc?.enableTurn);
     if (ctx.iceServers?.length) {
       iceServers = ctx.iceServers;

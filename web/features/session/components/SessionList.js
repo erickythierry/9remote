@@ -18,7 +18,7 @@ import AddHostModal from "@/features/hosts/components/AddHostModal";
 import { orderedHostsOf } from "@/features/hosts/lib/fleetTree";
 import { makeFleetActions } from "@/features/hosts/lib/fleetActions";
 import { sessionWorkspaceId } from "@/features/terminal/lib/paneLayout";
-import { isHostEnvironment } from "@/shared/utils/localOrigin";
+import { isHostMachine } from "@/shared/utils/localOrigin";
 import { PANEL_HEADER_H_CLASS } from "@/shared/constants/layout";
 import SessionBackgroundModal from "@/features/terminal/components/SessionBackgroundModal";
 
@@ -65,7 +65,7 @@ export default function SessionList({
   const showButton = (id) => !hiddenHeaderButtons.includes(id);
   const pushView = useTerminalStore((s) => s.pushView);
   // Pairing QR lives on the host's own page — hide the entry on the public web.
-  const isHostUi = isHostEnvironment();
+  const isHostUi = isHostMachine();
 
   const [bgTarget, setBgTarget] = useState(null);           // session whose background sheet is open
   const [terminalModal, setTerminalModal] = useState(null); // { workspaceId }

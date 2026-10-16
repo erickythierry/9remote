@@ -9,6 +9,8 @@ const monorepoRoot = path.resolve(__dirname, "..");
 const rootPkg = JSON.parse(readFileSync("../package.json", "utf-8"));
 
 const isStaticExport = process.env.STATIC_EXPORT === "1";
+const isSelfHosted = process.env.SELF_HOSTED === "1";
+const fontsCss = path.join(__dirname, "app", isSelfHosted ? "fonts.local.css" : "fonts.remote.css");
 if (!isStaticExport) {
   initOpenNextCloudflareForDev();
 }
@@ -27,7 +29,14 @@ const nextConfig = {
   // Turbopack infers the monorepo root from the root lockfile and resolves/watches
   // the whole tree (host/, expo/) — pinning to web/ shrinks dev memory (vercel/next.js#94432).
   turbopack: {
-    root: __dirname
+    root: __dirname,
+    resolveAlias: { "@app-fonts": fontsCss }
+  },
+  webpack: (config) => {
+    config.resolve.alias["@app-fonts"] = fontsCss;
+    // The alias target is invisible to the persistent cache; key it so the two builds never share CSS.
+    if (config.cache && typeof config.cache === "object") config.cache.version = `${config.cache.version || ""}|fonts:${isSelfHosted ? "local" : "remote"}`;
+    return config;
   },
   experimental: {
     // Dev FS cache is never pruned upstream and gets deserialized into RAM on every
@@ -44,7 +53,11 @@ const nextConfig = {
     "172.16.*.*"
   ],
   env: {
-    NEXT_PUBLIC_WORKER_URL: process.env.NEXT_PUBLIC_WORKER_URL || "https://9remote.cc",
+    // Self-hosted bakes no Worker: the page's own origin (the host) answers /api/*.
+    NEXT_PUBLIC_SELF_HOSTED: isSelfHosted ? "1" : "0",
+    // .env.production carries upstream's GA id; a VPN-only build phones nobody.
+    ...(isSelfHosted ? { NEXT_PUBLIC_GA_ID: "" } : {}),
+    NEXT_PUBLIC_WORKER_URL: isSelfHosted ? "" : process.env.NEXT_PUBLIC_WORKER_URL || "https://9remote.cc",
     NEXT_PUBLIC_SERVER_VERSION: rootPkg.version,
     NEXT_PUBLIC_STATIC_EXPORT: process.env.STATIC_EXPORT || "0",
   },

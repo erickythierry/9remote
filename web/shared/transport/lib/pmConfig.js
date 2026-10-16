@@ -1,5 +1,6 @@
 import { TRANSPORT_PROFILES, RTC_RESTART } from "@/shared/constants/transport";
 import { randomTag } from "./controlRouting";
+import { IS_SELF_HOSTED } from "@/shared/constants/API";
 
 // Legacy wsConfig/rtcConfig → the unified shape the manager runs on.
 // Pure: no timers, no listeners, no adapters.
@@ -7,7 +8,8 @@ import { randomTag } from "./controlRouting";
 export function buildConfig(wsConfig, rtcConfig) {
   const profileId = rtcConfig?.enableWebRTC ? "remoteDesktop" : "clientApp";
   const profile = { ...TRANSPORT_PROFILES[profileId] };
-  if (!rtcConfig?.enableWebRTC) profile.enabled = ["ws"];
+  // Self-hosted has no DO relay to signal RTC through, and plain HTTP has no crypto.subtle to verify the host's answer.
+  if (!rtcConfig?.enableWebRTC || IS_SELF_HOSTED) profile.enabled = ["ws"];
   if (rtcConfig?.enableTurn) profile.rtc = { ...profile.rtc, enableTurn: true };
 
   const auth = {

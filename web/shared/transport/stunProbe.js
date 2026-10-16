@@ -22,8 +22,9 @@ export function srflxIpOf(candidate) {
  */
 export function probePublicIp({ urls, timeoutMs, PeerConnection } = {}) {
   const PC = PeerConnection || (typeof RTCPeerConnection !== "undefined" ? RTCPeerConnection : null);
-  if (!PC) return Promise.resolve(null);
-  const iceServers = [{ urls: urls || STUN_PROBE.urls }];
+  const stunUrls = urls || STUN_PROBE.urls;
+  if (!PC || !stunUrls.length) return Promise.resolve(null);
+  const iceServers = [{ urls: stunUrls }];
   return new Promise((resolve) => {
     let pc, timer, done = false;
     const finish = (ip) => {

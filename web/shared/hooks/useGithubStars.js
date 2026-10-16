@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { GITHUB_REPO_API } from "@/shared/constants/github";
+import { IS_SELF_HOSTED } from "@/shared/constants/API";
 
 const STORAGE_KEY = "9remote_github_stars";
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -16,6 +17,7 @@ export function useGithubStars() {
   const [stars, setStars] = useState(null);
 
   useEffect(() => {
+    if (IS_SELF_HOSTED) return;
     try {
       const cached = localStorage.getItem(STORAGE_KEY);
       if (cached) {

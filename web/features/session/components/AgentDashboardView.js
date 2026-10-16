@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ConfirmDialog from "@/shared/components/ui/ConfirmDialog";
 import PromptDialog from "@/shared/components/ui/PromptDialog";
-import { isHostEnvironment } from "@/shared/utils/localOrigin";
-import { HOMEPAGE_URL } from "@/shared/constants/API";
+import { isHostMachine } from "@/shared/utils/localOrigin";
+import { HOMEPAGE_URL, IS_SELF_HOSTED } from "@/shared/constants/API";
 import { usePendingDeviceStore } from "@/features/session/stores/pendingDeviceStore";
 import { APP_STORE_URL, PLAY_STORE_URL } from "@/features/landing/constants/landingConfig";
 import "./agentDashboard.css";
@@ -400,7 +400,7 @@ function formatCountdown(ms) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function DashboardQrCard({ qrUrl, oneTimeKey, oneTimeKeyExpiresAt, permanentKey, onGenerateOneTimeKey, onRegenerateKey }) {
+function DashboardQrCard({ qrUrl, loginUrl = LOGIN_URL, oneTimeKey, oneTimeKeyExpiresAt, permanentKey, onGenerateOneTimeKey, onRegenerateKey }) {
   const canvasRef = useRef(null);
   const [now, setNow] = useState(() => Date.now());
   const [copiedKey, setCopiedKey] = useState(null);
@@ -478,9 +478,9 @@ function DashboardQrCard({ qrUrl, oneTimeKey, oneTimeKeyExpiresAt, permanentKey,
 
         <div className="flex flex-col items-center gap-1 mt-4 mb-9">
           <span className="text-[11.5px] leading-4" style={{ color: "var(--text-muted)" }}>Scan to sign in</span>
-          <a href={LOGIN_URL} target="_blank" rel="noopener noreferrer" onClick={(e) => openExternal(e, LOGIN_URL)} className="flex items-center gap-1.5 hover:underline transition-opacity">
+          <a href={loginUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => openExternal(e, loginUrl)} className="flex items-center gap-1.5 hover:underline transition-opacity">
             <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
-            <span className="text-sm font-bold" style={{ color: "var(--accent)" }}>{LOGIN_URL.replace(/^https?:\/\//, "")}</span>
+            <span className="text-sm font-bold" style={{ color: "var(--accent)" }}>{loginUrl.replace(/^https?:\/\//, "")}</span>
             <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 14, color: "var(--accent)" }}>open_in_new</span>
           </a>
         </div>
@@ -626,7 +626,7 @@ export default function AgentDashboardView() {
 
   // Initial state + SSE stream — the host's local event bus.
   useEffect(() => {
-    if (!isHostEnvironment()) return;
+    if (!isHostMachine()) return;
     let alive = true;
 
     fetch("/api/ui/state", { cache: "no-store" })
@@ -768,7 +768,7 @@ export default function AgentDashboardView() {
   };
 
   /* ── non-host env: nothing to show ── */
-  if (!isHostEnvironment()) {
+  if (!isHostMachine()) {
     return (
       <div className="h-full grid place-items-center p-6">
         <p className="text-sm text-text-muted text-center">Device pairing is only available in the host&apos;s local view.</p>
@@ -777,6 +777,8 @@ export default function AgentDashboardView() {
   }
 
   const tunnel = tunnelStatus(main);
+  // Self-hosted: VPN clients log in at the host's VPN origin, which the host reports as tunnelUrl.
+  const selfHostedLoginUrl = IS_SELF_HOSTED && main.tunnelUrl ? `${main.tunnelUrl}/login` : undefined;
   const rtc = rtcStatus(transport);
   const clients = mergeClients(approvedDevices, connections, rejectedDevices);
   const onlineCount = clients.filter((c) => c.status === "online").length;
@@ -807,6 +809,7 @@ export default function AgentDashboardView() {
                 {main.step > 0 && main.step < 5 && <TunnelSteps step={main.step} stepDesc={main.stepDesc} />}
                 <DashboardQrCard
                   qrUrl={main.qrUrl}
+                  loginUrl={selfHostedLoginUrl}
                   oneTimeKey={main.oneTimeKey}
                   oneTimeKeyExpiresAt={main.oneTimeKeyExpiresAt}
                   permanentKey={main.permanentKey}
@@ -831,7 +834,12 @@ export default function AgentDashboardView() {
             className="relative z-[1] mt-5 self-center inline-flex items-center gap-2 px-3 py-1.5 rounded-full flex-shrink-0"
             style={{ background: "var(--row-bg)", border: "1px solid var(--border-subtle)" }}
           >
-            {remoteEnabled ? (
+            {IS_SELF_HOSTED ? (
+              <span className="flex items-center gap-1.5 min-w-0" title="Self-hosted (VPN)">
+                <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 15, color: "var(--text-muted)" }}>vpn_lock</span>
+                <span className="font-mono text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{main.tunnelUrl || "self-hosted"}</span>
+              </span>
+            ) : remoteEnabled ? (
               <>
                 <span className="flex items-center gap-1.5 min-w-0" title="Cloudflare tunnel">
                   <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 15, color: "var(--text-muted)" }}>cloud</span>
@@ -862,11 +870,11 @@ export default function AgentDashboardView() {
                 <span className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>Remote off</span>
               </span>
             )}
-            <Toggle
+            {!IS_SELF_HOSTED && <Toggle
               on={remoteEnabled}
               onClick={() => (remoteEnabled ? setShowRemoteOffConfirm(true) : handleRemoteToggle())}
               title={remoteEnabled ? "Turn off remote access" : "Turn on remote access"}
-            />
+            />}
           </div>
         </section>
 
@@ -886,7 +894,7 @@ export default function AgentDashboardView() {
               <ConnectCard icon={<AppleIcon />} iconClass="ad-tile-apple" title="iPhone & iPad" sub="App Store" href={APP_STORE_URL} />
               <ConnectCard icon={<PlayIcon />} iconClass="ad-tile-play" title="Android" sub="Google Play" href={PLAY_STORE_URL} />
               <ConnectCard icon="computer" iconClass="ad-tile-pc" title="PC & Mac" sub="All downloads" href={DOWNLOADS_URL} />
-              <ConnectCard icon="language" iconClass="ad-tile-web" title="Web" sub="9remote.cc" href={LOGIN_URL} />
+              <ConnectCard icon="language" iconClass="ad-tile-web" title="Web" sub={(selfHostedLoginUrl || LOGIN_URL).replace(/^https?:\/\/|\/login$/g, "")} href={selfHostedLoginUrl || LOGIN_URL} />
             </div>
           </Section>
 

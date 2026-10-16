@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { usePendingDeviceStore } from "@/features/session/stores/pendingDeviceStore";
-import { isHostEnvironment } from "@/shared/utils/localOrigin";
+import { isHostMachine } from "@/shared/utils/localOrigin";
 
 const PENDING_POLL_MS = 3000;
 
@@ -27,7 +27,7 @@ export default function PendingDeviceApprovalModal() {
   useEffect(() => { pendingRef.current = pendingDevice; }, [pendingDevice]);
 
   useEffect(() => {
-    if (!isHostEnvironment()) return;
+    if (!isHostMachine()) return;
     const es = new EventSource("/api/ui/events");
     es.onmessage = (e) => {
       let data;

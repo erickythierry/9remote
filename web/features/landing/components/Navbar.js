@@ -5,14 +5,15 @@ import Link from "next/link";
 import { THEME, DOWNLOADS_PATH } from "../constants/landingConfig";
 import ThemeToggle from "@/shared/theme/ThemeToggle";
 import { useGithubStars } from "@/shared/hooks/useGithubStars";
+import { DOCS_URL } from "@/shared/constants/API";
 
 const LINKS = [
   { href: "#features", label: "Features" },
   { href: "#security", label: "Security" },
   { href: "#how-it-works", label: "How It Works" },
-  { href: "https://docs.9remote.cc/", label: "Docs", external: true },
+  { href: DOCS_URL, label: "Docs", external: true },
   { href: "https://github.com/decolua/9remote", label: "GitHub", external: true }
-];
+].filter((l) => l.href);
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);

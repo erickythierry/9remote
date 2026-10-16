@@ -1,0 +1,10 @@
+/* Self-hosted build: no network beyond the VPN, so fonts ship in the bundle. */
+@import "@fontsource/inter/latin-300.css";
+@import "@fontsource/inter/latin-400.css";
+@import "@fontsource/inter/latin-500.css";
+@import "@fontsource/inter/latin-600.css";
+@import "@fontsource/inter/latin-700.css";
+@import "material-symbols/rounded.css";
+
+/* Flag images come from flagcdn.com; unreachable inside the VPN, and every flag sits next to its label. */
+img[src^="https://flagcdn.com/"] { display: none; }

@@ -3,7 +3,7 @@
 // get the lean local treatment (WS-direct carrier, no RTC/DO signaling).
 // SECURITY: this only picks the carrier; admission still requires the key TAIL
 // on every connection, and the host's loopback auto-approve stays 127.0.0.1-only.
-import { AGENT_PORT, LOCAL_HOST_ORIGIN, LOCAL_AGENT_ORIGIN } from "@/shared/constants/API";
+import { AGENT_PORT, LOCAL_HOST_ORIGIN, LOCAL_AGENT_ORIGIN, IS_SELF_HOSTED } from "@/shared/constants/API";
 
 const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
@@ -20,9 +20,11 @@ export function isSameMachine() {
   return isLoopbackOrigin() || !!window.__TAURI__;
 }
 
-/** Check if running inside host workspace (Tauri app, agent port, or static host build). */
-export function isHostEnvironment() {
+/** Page runs on the host's machine and may call its loopback-only APIs (/api/ui/*, /api/device/*, SSE). */
+export function isHostMachine() {
   if (typeof window === "undefined") return false;
+  // Self-hosted serves the static build to VPN clients too, so "static export" no longer implies the host's machine.
+  if (IS_SELF_HOSTED) return isSameMachine();
   return (
     !!window.__TAURI__ ||
     window.location.port === String(AGENT_PORT) ||
@@ -33,12 +35,17 @@ export function isHostEnvironment() {
     process.env.NEXT_PUBLIC_DEV_HOST === "1" || process.env.NEXT_PUBLIC_DEV_AGENT === "1"
   );
 }
-export const isAgentEnvironment = isHostEnvironment;
+
+/** Check if running inside host workspace (Tauri app, agent port, or static host build). */
+export const isHostEnvironment = isHostMachine;
+export const isAgentEnvironment = isHostMachine;
 
 /** Loopback or a private LAN address (10/8, 172.16/12, 192.168/16). */
 export function isLocalHostNetwork() {
   if (isLoopbackOrigin()) return true;
   if (typeof window === "undefined") return false;
+  // Self-hosted: whatever address served this page is the host, VPN range included.
+  if (IS_SELF_HOSTED) return true;
   const m = IPV4.exec(window.location.hostname);
   if (!m || m.slice(1).some((o) => Number(o) > 255)) return false;
   const a = Number(m[1]), b = Number(m[2]);

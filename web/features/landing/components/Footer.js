@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { THEME } from "../constants/landingConfig";
+import { DOCS_URL } from "@/shared/constants/API";
 
 const PRODUCT_LINKS = [
   { href: "/login", label: "Remote", internal: true },
@@ -14,9 +15,9 @@ const PRODUCT_LINKS = [
 const RESOURCE_LINKS = [
   { href: "https://github.com/decolua/9remote", label: "GitHub" },
   { href: "https://www.npmjs.com/package/9remote", label: "NPM" },
-  { href: "https://docs.9remote.cc/", label: "Documentation" },
+  { href: DOCS_URL, label: "Documentation" },
   { href: "https://www.facebook.com/groups/9teamvn", label: "Community" }
-];
+].filter((l) => l.href);
 
 function FooterLink({ href, label, internal }) {
   const Tag = internal ? Link : "a";
