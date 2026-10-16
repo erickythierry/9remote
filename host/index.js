@@ -37,8 +37,10 @@ import {
   handleLocalToken, handleUpdate, setUpdateInfo, getUpdateInfo,
 } from "./api/ui.js";
 import { broadcastServerInfo, setConnectCheckHandler } from "./features/terminal/terminalSocket.js";
-import { UPDATE } from "./cli/config.js";
+import { UPDATE, SELF_HOSTED } from "./cli/config.js";
+import { isAllowedPeer } from "./lib/trustedNetwork.js";
 import { handleOneTimeKey, handleRegenerate, handleSignalingRetry } from "./api/key.js";
+import { handleSelfHostedConnect, handleSelfHostedTempKeyRemove, handleSelfHostedTurnCredentials } from "./api/selfHosted.js";
 import { handleApprove, handleReject, handlePending, handleApproved, handleRemove, handleDisconnect, handleRejected, handleApproveRejected, handleClearRejected, handleGetAutoApprove, handleSetAutoApprove, handleSetLabel } from "./api/device.js";
 import { handleNotifyPost, handleNotifyGet } from "./api/notify.js";
 import { handleMcpPost } from "./api/mcp.js";
@@ -131,6 +133,7 @@ function serveStatic(res, filePath, { frameable = false } = {}) {
 }
 
 async function checkForUpdate(currentVersion) {
+  if (SELF_HOSTED) return;
   try {
     const res = await browserFetch(NPM_REGISTRY_URL);
     if (!res.ok) return;
@@ -222,6 +225,15 @@ async function handleVerifyKey(req, res) {
   setTimeout(() => jsonOk(res, { ok: false, reason: result.reason }), result.penaltyMs || 0);
 }
 
+// Self-hosted: VPN clients load the web export (login + workspace shell, no secrets) — never host UI or /api.
+function isPublicWebAsset(pathname) {
+  if (pathname.startsWith("/api/") || pathname.startsWith("/socket.io")) return false;
+  if (pathname === "/" || pathname === "/login" || pathname.startsWith("/login/") || pathname === "/workspace"
+    || pathname.startsWith("/workspace/") || pathname.startsWith("/_next/")) return true;
+  const top = pathname.slice(1).split("/")[0];
+  return !!top && top !== "admin" && existsSync(join(WEB_DIST, top));
+}
+
 // HTML file preview — static serving of the file's directory behind a session id.
 function handlePreview(req, res, ctx) {
   handlePreviewRequest(req, res, ctx);
@@ -307,6 +319,12 @@ const ROUTES = [
   // TAIL it presents is the credential, and a wrong one is all it gets back.
   { path: "/api/verify-key",       method: "POST", public: true, handler: handleVerifyKey },
 
+  // Self-hosted: the host answers the Worker endpoints the web client calls.
+  ...(SELF_HOSTED ? [
+    { path: "/api/connect",                  method: "POST",   public: true, handler: handleSelfHostedConnect },
+    { path: "/api/temp-key/remove",          method: "DELETE", public: true, handler: handleSelfHostedTempKeyRemove },
+    { path: "/api/webrtc/turn-credentials",  method: "GET",    public: true, handler: handleSelfHostedTurnCredentials },
+  ] : []),
 ];
 
 // ── Server bootstrap ───────────────────────────────────────────────────────
@@ -451,7 +469,7 @@ export async function startServer() {
     serveHostUi();
   };
 
-  const router = createRouter(ROUTES, { fallback: staticFallback });
+  const router = createRouter(ROUTES, { fallback: staticFallback, publicFallback: SELF_HOSTED ? isPublicWebAsset : null });
 
   // CORS is decided inside the router, where the route's public flag is known —
   // a private route must not grant a cross-origin page the right to read it.
@@ -481,6 +499,9 @@ export async function startServer() {
     logger.error(`HTTP server error: ${err?.message || err}`);
     if (err?.code === "EADDRINUSE") process.exit(1);
   });
+
+  // Self-hosted listens on every interface (CLI needs loopback, clients the VPN); drop anyone else at TCP.
+  if (SELF_HOSTED) server.on("connection", (sock) => { if (!isAllowedPeer(sock.remoteAddress)) sock.destroy(); });
 
   server.listen(port, (err) => {
     if (err) throw err;

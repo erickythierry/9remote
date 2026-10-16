@@ -1,4 +1,6 @@
+import crypto from "crypto";
 import { browserFetch } from "../../lib/constants.js";
+import { SELF_HOSTED } from "../config.js";
 import { createLogger } from "../../lib/logger.js";
 import { getHostPublicKeyB64, getHostX25519PublicKeyB64, sessionMutationAuth } from "../../lib/hostKey.js";
 import { headOf } from "./apiKey.js";
@@ -6,6 +8,16 @@ import { setActivePairing, getActivePairing, generatePairingTail } from "../../l
 
 const logger = createLogger("session");
 const TEMP_KEY_EXPIRY_MINUTES = 10;
+// Same alphabet/length the Worker mints (web/app/api/temp-key/create).
+const TEMP_KEY_CHARS = "ABCDEFGHIJKLMNPQRSTUVWXYZ123456789";
+const TEMP_KEY_LENGTH = 6;
+
+/** Self-hosted: the host is the pairing authority, no Worker round-trip. */
+function mintLocalTempKey() {
+  let tempKey = "";
+  for (let i = 0; i < TEMP_KEY_LENGTH; i++) tempKey += TEMP_KEY_CHARS[crypto.randomInt(TEMP_KEY_CHARS.length)];
+  return { tempKey, expiresAt: Date.now() + TEMP_KEY_EXPIRY_MINUTES * 60 * 1000, expiryMinutes: TEMP_KEY_EXPIRY_MINUTES };
+}
 
 /**
  * Create temp key on Worker for API key, appended with the host-key fp2.
@@ -35,7 +47,8 @@ export async function createTempKey(apiKey, workerUrl) {
   };
   try {
     let data;
-    try {
+    if (SELF_HOSTED) data = mintLocalTempKey();
+    else try {
       data = await mint();
     } catch (err) {
       // A missing/dead session row kills every mint — re-register it once and
@@ -48,7 +61,7 @@ export async function createTempKey(apiKey, workerUrl) {
     // except on the user's screen — the Worker is handed the tempKey alone.
     // Same secret an API key carries, with the code's own lifetime.
     const tail = generatePairingTail();
-    setActivePairing(data.tempKey, tail, data.expiresAt, workerUrl);
+    setActivePairing(data.tempKey, tail, data.expiresAt, SELF_HOSTED ? null : workerUrl);
     // No separator: read and typed as one token (6 tempKey + 2 tail)
     return { ...data, oneTimeKey: `${data.tempKey}${tail}` };
   } catch (error) {
@@ -81,6 +94,8 @@ export function connectUrlOf(workerUrl, data) {
  * @returns {Promise<boolean>} true when the Worker accepted the key
  */
 export async function registerSession(apiKey, workerUrl, tunnelUrl, previousKey) {
+  // No session row to keep: the host itself answers /api/connect.
+  if (SELF_HOSTED) return true;
   try {
     const res = await browserFetch(`${workerUrl}/api/session/create`, {
       method: "POST",

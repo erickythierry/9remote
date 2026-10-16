@@ -48,7 +48,7 @@ export async function parseJsonBody(req, res) {
  * @param {Function} options.fallback - Called when no route matches
  * @returns {Function} HTTP request handler (req, res) => void
  */
-export function createRouter(routes, { fallback } = {}) {
+export function createRouter(routes, { fallback, publicFallback } = {}) {
   // Pre-build lookup map: "METHOD:/path" → { handler, public }
   const exactMap = new Map();
   const prefixRoutes = [];
@@ -78,7 +78,14 @@ export function createRouter(routes, { fallback } = {}) {
 
   function isPublic(pathname) {
     if (publicExact.has(pathname)) return true;
-    return publicPrefixes.some((p) => pathname.startsWith(p));
+    if (publicPrefixes.some((p) => pathname.startsWith(p))) return true;
+    // Only paths no route claims can be opened up this way; a route keeps its own flag.
+    return !!publicFallback && !hasRoute(pathname) && publicFallback(pathname);
+  }
+
+  const routedPaths = new Set(routes.map((r) => r.path));
+  function hasRoute(pathname) {
+    return routedPaths.has(pathname) || prefixRoutes.some((r) => pathname.startsWith(r.prefix));
   }
 
   return async (req, res) => {

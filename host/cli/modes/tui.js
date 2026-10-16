@@ -24,7 +24,7 @@ import { waitForTunnelReady } from "../tunnel/readiness.js";
 import { updateTunnelUrl, markRemoteOffline, startSessionHeartbeat } from "../tunnel/urlSync.js";
 import { ensureKeyData } from "../session/key.js";
 import { buildMenuHeader } from "../session/display.js";
-import { WORKER_URL, DELAYS, TUI, POLL } from "../config.js";
+import { SELF_HOSTED, PUBLIC_ORIGIN, WORKER_URL, DELAYS, TUI, POLL } from "../config.js";
 
 let activeSubmenuRefresh = null;
 
@@ -90,12 +90,12 @@ export async function tuiMode() {
 
   // tempKey first — connect URL is Worker-based, doesn't depend on the tunnel.
   // RTC signaling goes via the DO; the tunnel is a fallback transport.
-  const tempKeyData = remoteOnline ? await createTempKey(keyData.key, WORKER_URL) : null;
+  const tempKeyData = remoteOnline || SELF_HOSTED ? await createTempKey(keyData.key, WORKER_URL) : null;
   const connectUrl = connectUrlOf(WORKER_URL, tempKeyData);
 
   let currentOneTimeKey = tempKeyData?.oneTimeKey || "";
   let currentConnectUrl = connectUrl;
-  let currentTunnelUrl = "";
+  let currentTunnelUrl = SELF_HOSTED ? PUBLIC_ORIGIN : "";
   let menuHeader = null;
   const tunnelRef = { current: null };
   const onTunnelUrl = async (newUrl) => {
@@ -149,7 +149,7 @@ export async function tuiMode() {
     });
   }
 
-  if (remoteOnline) {
+  if (remoteOnline || SELF_HOSTED) {
     await setStep(STEP.READY, {
       tunnelUrl: currentTunnelUrl,
       oneTimeKey: tempKeyData?.oneTimeKey || "",
@@ -273,7 +273,7 @@ async function tuiMenuLoop(keyData, tunnelUrl, getHeader, setHeader, onRedrawReg
     ];
     // Keys are Worker-minted (pairing codes, key registration) — nothing to do
     // here while the host runs local-only.
-    if (loadSettings().remoteEnabled !== false) items.push({ label: "Keys  \u25b6", action: "keys" });
+    if (SELF_HOSTED || loadSettings().remoteEnabled !== false) items.push({ label: "Keys  \u25b6", action: "keys" });
     if (remoteAvailable) {
       items.push({ label: `Remote Desktop: ${desktopOn ? chalk.green("ON") : chalk.gray("OFF")}  ▶`, action: "desktop" });
     }
@@ -315,7 +315,7 @@ async function tuiMenuLoop(keyData, tunnelUrl, getHeader, setHeader, onRedrawReg
 
 async function tuiKeysMenu(keyData, tunnelUrl, setHeader, getHeader) {
   // Every key action is a Worker call — with remote off there is nothing to ask.
-  const items = loadSettings().remoteEnabled === false
+  const items = loadSettings().remoteEnabled === false && !SELF_HOSTED
     ? [{ label: chalk.gray("Remote access is off — enable it in the Web UI"), action: "back" }]
     : [
         { label: "New One-Time Key", action: "otk" },

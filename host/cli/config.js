@@ -1,11 +1,22 @@
 import chalk from "chalk";
+import { SERVER_PORT } from "../lib/constants.js";
 
 // NODE_ENV=development only toggles local dev behavior (Vite proxy, logs) — the
 // target zone stays prod. Override with NREMOTE_WORKER_URL=https://dev.9remote.cc.
 const IS_DEV = process.env.NODE_ENV === "development";
 export const IS_DEV_ENV = IS_DEV;
-export const WORKER_URL = process.env.NREMOTE_WORKER_URL
-  || (typeof __DEFAULT_WORKER_URL__ !== "undefined" ? __DEFAULT_WORKER_URL__ : "https://9remote.cc");
+// Self-hosted: one host serves dash + auth to a private VPN; no Worker, tunnel, DO or npm.
+export const SELF_HOSTED = process.env.NREMOTE_SELF_HOSTED === "1";
+// Origin VPN clients reach this host at (e.g. http://10.8.0.2:2208); empty = request origin.
+export const PUBLIC_ORIGIN = (process.env.NREMOTE_PUBLIC_ORIGIN || "").replace(/\/+$/, "");
+// CIDRs whose peers count as local for admission (e.g. 10.8.0.0/24). Only honored when SELF_HOSTED.
+export const TRUSTED_CIDRS = SELF_HOSTED
+  ? (process.env.NREMOTE_TRUSTED_CIDRS || "").split(",").map((c) => c.trim()).filter(Boolean)
+  : [];
+export const WORKER_URL = SELF_HOSTED
+  ? (PUBLIC_ORIGIN || `http://127.0.0.1:${SERVER_PORT}`)
+  : process.env.NREMOTE_WORKER_URL
+    || (typeof __DEFAULT_WORKER_URL__ !== "undefined" ? __DEFAULT_WORKER_URL__ : "https://9remote.cc");
 export const SERVER_HEALTHY_RESET_MS = 30000;
 export const SHUTDOWN_EXIT_DELAY_MS = 500;
 export const SHUTDOWN_CRASH_DELAY_MS = 300;

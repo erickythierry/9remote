@@ -18,7 +18,7 @@ import { showConnectionInfo } from "../session/display.js";
 import { shutdownAll } from "./lifecycle.js";
 import { runWebUpdate } from "../utils/updateChecker.js";
 import { restartServer } from "./lifecycle.js";
-import { WORKER_URL, POLL, DELAYS } from "../config.js";
+import { SELF_HOSTED, WORKER_URL, POLL, DELAYS } from "../config.js";
 
 export function setupCmdPoller(getActiveTunnel, setActiveTunnel, apiKey, getServerManager) {
   let busy = false;
@@ -162,7 +162,7 @@ async function handleStart(getActiveTunnel, setActiveTunnel, apiKey) {
 
 async function handleRegenerate() {
   // Regenerating registers the new key with the Worker — local-only has no use for it
-  if (loadSettings().remoteEnabled === false) {
+  if (loadSettings().remoteEnabled === false && !SELF_HOSTED) {
     logger.info("Key regeneration skipped — remote is disabled");
     return;
   }

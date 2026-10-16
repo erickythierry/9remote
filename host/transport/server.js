@@ -43,6 +43,7 @@ import { ADMISSION, DEVICE_GATE, TAIL_VERDICT, TAIL_REJECT_REASON, CHANNELS } fr
 import { headOf, tailOf } from "../cli/utils/apiKey.js";
 import { createLogger } from "../lib/logger.js";
 import { ConnectionRegistry } from "./ConnectionRegistry.js";
+import { isTrustedVpnAddress } from "../lib/trustedNetwork.js";
 import { planAdmission } from "./admissionFlow.js";
 import { AUTH_EVENTS, CONNECTION_STATE } from "../lib/connectionConstants.js";
 
@@ -827,7 +828,9 @@ export async function startTransportServer(server) {
     // sockets) is what actually keeps new clients out — a reconnect would
     // otherwise sail straight past the switch. The local workspace is not remote
     // and must keep working, so only requests from outside are turned away.
-    if (!isRemoteEnabled() && !isLocalSocket(socket)) {
+    // Self-hosted VPN peers are not "remote": they pass this gate, then face tail proof + device approval like anyone.
+    const isVpnPeer = !isTunnel && isTrustedVpnAddress(socket.handshake.address);
+    if (!isRemoteEnabled() && !isLocalSocket(socket) && !isVpnPeer) {
       pushUiLogDebug(`Rejected ${deviceId?.slice(0, 8) || "unknown"} from ${ip} — remote access is off`);
       socket.disconnect(true);
       return;

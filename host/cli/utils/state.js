@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { PATHS } from "../../lib/constants.js";
 import { writeJsonAtomic } from "../../lib/atomicFile.js";
+import { SELF_HOSTED } from "../config.js";
 
 const STATE_DIR = PATHS.STATE;
 const STATE_FILE = path.join(PATHS.STATE, "state.json");
@@ -61,10 +62,11 @@ export function clearState() {
 export function loadSettings() {
   try {
     ensureDir();
-    if (!fs.existsSync(SETTINGS_FILE)) return {};
-    return JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) || {};
+    const settings = fs.existsSync(SETTINGS_FILE) ? JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) || {} : {};
+    // Self-hosted pins remote off: every Worker/tunnel/DO path already keys off this flag.
+    return SELF_HOSTED ? { ...settings, remoteEnabled: false } : settings;
   } catch {
-    return {};
+    return SELF_HOSTED ? { remoteEnabled: false } : {};
   }
 }
 

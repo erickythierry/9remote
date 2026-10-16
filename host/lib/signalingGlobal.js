@@ -8,7 +8,7 @@
 // deviceId and flushed when the matching PM registers — so the first offer is
 // never lost to a race.
 import { SignalingClient } from "../transport/SignalingClient.js";
-import { WORKER_URL, SIGNALING_HB_INTERVAL_MS } from "../cli/config.js";
+import { SELF_HOSTED, WORKER_URL, SIGNALING_HB_INTERVAL_MS } from "../cli/config.js";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("signaling");
@@ -47,7 +47,7 @@ let _roomKey = null;
 let _hbTimer = null;
 
 export function initSignalingGlobal(apiKey) {
-  if (!apiKey) return;
+  if (!apiKey || SELF_HOSTED) return;
   if (_client) {
     if (_roomKey === apiKey) return;
     logger.info(`apiKey changed — rejoining signaling room ${apiKey.slice(0, 8)}...`);

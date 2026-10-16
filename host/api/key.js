@@ -10,12 +10,13 @@ import { getUiState, updateUiState } from "./ui.js";
 import { createTempKey, connectUrlOf, registerSession } from "../cli/utils/token.js";
 import { initSignalingGlobal, retrySignalingNow, getSignalingState } from "../lib/signalingGlobal.js";
 import { headOf } from "../cli/utils/apiKey.js";
-import { WORKER_URL } from "../cli/config.js";
+import { SELF_HOSTED, WORKER_URL } from "../cli/config.js";
 
 /** Remote off = local-only: pairing codes and key registration all live on the
  *  Worker, so these handlers must not reach it. One gate for the whole file. */
 function remoteDisabled(res) {
-  if (loadSettings().remoteEnabled !== false) return false;
+  // Self-hosted mints codes and keys locally, so the Worker gate does not apply.
+  if (SELF_HOSTED || loadSettings().remoteEnabled !== false) return false;
   jsonErr(res, 409, "Remote access is off");
   return true;
 }
@@ -23,7 +24,7 @@ function remoteDisabled(res) {
 export async function handleOneTimeKey(req, res) {
   if (remoteDisabled(res)) return;
   const state = getUiState();
-  const workerUrl = state.workerUrl || WORKER_URL;
+  const workerUrl = SELF_HOSTED ? WORKER_URL : state.workerUrl || WORKER_URL;
   if (!state.permanentKey) { jsonErr(res, 400, "No permanent key set"); return; }
   const data = await createTempKey(state.permanentKey, workerUrl);
   if (!data) { jsonErr(res, 500, "Temp key creation failed"); return; }
@@ -45,7 +46,7 @@ export async function handleRegenerate(req, res) {
   if (remoteDisabled(res)) return;
   try {
     const state = getUiState();
-    const workerUrl = state.workerUrl || WORKER_URL;
+    const workerUrl = SELF_HOSTED ? WORKER_URL : state.workerUrl || WORKER_URL;
     const machineId = await getConsistentMachineId();
     const key = generateApiKeyV2(machineId);
     const existing = loadKey();

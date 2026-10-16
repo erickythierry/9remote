@@ -12,6 +12,7 @@ const logger = createLogger("tunnel");
 import { RETRY_CONFIG, SERVER_PORT } from "../../lib/constants.js";
 import { probeTunnelOnce } from "./dnsProbe.js";
 import { setLastStatus } from "./tunnelHealth.js";
+import { SELF_HOSTED } from "../config.js";
 
 // Tunnel-only network probe params (not retry-related)
 const TUNNEL_CONFIG = {
@@ -282,6 +283,7 @@ async function downloadFile(url, dest, onProgress) {
 }
 
 export async function ensureCloudflared(onProgress) {
+  if (SELF_HOSTED) throw new Error("cloudflared is disabled in self-hosted mode");
   if (!fs.existsSync(BIN_DIR)) {
     fs.mkdirSync(BIN_DIR, { recursive: true });
   }

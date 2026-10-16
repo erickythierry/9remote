@@ -10,7 +10,7 @@ import { markRemoteOffline } from "../tunnel/urlSync.js";
 import { initTray, killTray, openBrowser, updateTrayTooltip } from "../utils/tray.js";
 import { killCloudflared } from "../utils/cloudflared.js";
 import { ensureKeyData, getVersion } from "../session/key.js";
-import { DELAYS } from "../config.js";
+import { SELF_HOSTED, PUBLIC_ORIGIN, DELAYS } from "../config.js";
 
 export async function startUiMode() {
   // A server that already answers belongs to another CLI — a second one would only
@@ -47,7 +47,10 @@ export async function startUiMode() {
   // Remote off at boot (or a crash left agentOnline=1 behind) — say goodbye so
   // login stops handing out this key instead of waiting out the grace window.
   if (loadSettings().remoteEnabled === false) await markRemoteOffline(keyData.key);
-  await pushUiState({ permanentKey: keyData.key, step: STEP.STOPPED, theme });
+  // Self-hosted has no tunnel to wait for: READY lets the dash auto-mint a pairing code.
+  await pushUiState(SELF_HOSTED
+    ? { permanentKey: keyData.key, step: STEP.READY, tunnelUrl: PUBLIC_ORIGIN, theme }
+    : { permanentKey: keyData.key, step: STEP.STOPPED, theme });
 
   setupExitHandler(serverManager, null);
   setupCmdPoller(() => activeTunnel, (t) => { activeTunnel = t; }, keyData.key, () => serverManager);

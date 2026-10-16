@@ -19,7 +19,7 @@ import { ensureKeyData, getVersion } from "../session/key.js";
 import { showConnectionInfo } from "../session/display.js";
 import { showBanner } from "../utils/tui.js";
 import { maskApiKey } from "../utils/apiKey.js";
-import { WORKER_URL, DELAYS, POLL } from "../config.js";
+import { SELF_HOSTED, PUBLIC_ORIGIN, WORKER_URL, DELAYS, POLL } from "../config.js";
 
 async function startServerAndTunnel(selectedKey) {
   logger.info("Starting server...");
@@ -123,7 +123,7 @@ export async function autoStartDev() {
 
   // Offline: showConnectionInfo would mint a temp key that cannot succeed and
   // its READY fallback would mask the STOPPED state the retry button keys off.
-  if (remoteOnline) await showConnectionInfo(keyData.key, tunnelUrl);
+  if (remoteOnline || SELF_HOSTED) await showConnectionInfo(keyData.key, SELF_HOSTED ? PUBLIC_ORIGIN : tunnelUrl);
   else console.log(`⚠ ${loadSettings().remoteEnabled === false ? "Remote is disabled — enable it in Web UI settings" : "Remote not connected — tap \"remote · offline\" in the Web UI to retry"}. Local mode.`);
   setupExitHandler(serverManager, tunnelRef.current);
   setupCmdPoller(() => tunnelRef.current, (t) => { tunnelRef.current = t; }, keyData.key);
