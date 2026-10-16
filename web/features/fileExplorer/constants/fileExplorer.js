@@ -238,6 +238,15 @@ export const FILE_WATCH = {
 
 export const GIT_REFRESH_EVENT = "fileExplorer:gitRefresh";
 
+// Window events that mean git state may have moved — the SCM list and open diff tabs listen.
+export const GIT_AUTO_REFRESH_EVENTS = [
+  "fileExplorer:fileSaved",
+  "fileExplorer:fileCreated",
+  "fileExplorer:fileDeleted",
+  "fileExplorer:fileRenamed",
+  GIT_REFRESH_EVENT
+];
+
 export const STORAGE_KEYS = {
   sidebarWidth: "fileExplorer.sidebarWidth",
   sidebarVisible: "fileExplorer.sidebarVisible",
