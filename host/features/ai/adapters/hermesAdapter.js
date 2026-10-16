@@ -12,6 +12,7 @@ import { getExtendedEnv } from "./env.js";
 import { HERMES_EFFORTS, setHermesReasoningEffort, resolveDefaultEffort, setHermesLiveCatalog } from "../models.js";
 import { readHermesSessionTitle, renameHermesSession } from "../../terminal/agentHistory.js";
 import { createLogger } from "../../../lib/logger.js";
+import { addSessionUsage } from "../usage.js";
 
 const logger = createLogger("ai");
 
@@ -531,6 +532,7 @@ export class HermesAdapter {
     this.stats.outputTokens = usage.outputTokens ?? usage.output_tokens ?? usage.completion_tokens ?? 0;
     this.stats.cachedTokens = usage.cachedReadTokens ?? usage.cached_read_tokens ?? 0;
     this.stats.reasoningTokens = usage.thoughtTokens ?? usage.thought_tokens ?? usage.reasoning_tokens ?? 0;
+    addSessionUsage(this.stats, { input: this.stats.inputTokens, cached: this.stats.cachedTokens, output: this.stats.outputTokens });
     this.stats.totalTurns += 1;
     // An effort pick that arrived mid-turn applies now, in the idle window it needs.
     const apply = this._pendingEffortApply;

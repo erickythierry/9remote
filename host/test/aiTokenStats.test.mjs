@@ -126,5 +126,16 @@ await test("claude's context counts both cache fields, the way the CLI resends t
   assert.equal(adapter.stats.contextTokens, 45500);
 });
 
+await test("claude totals the session: input counts the cache it resent, cached is the read share", () => {
+  const adapter = new ClaudeAdapter({ cwd: "/tmp", onEvent: () => {} });
+  const turn = (u) => adapter.handleMessage({ type: "result", usage: u });
+  turn({ input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 800, cache_creation_input_tokens: 100 });
+  turn({ input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 990, cache_creation_input_tokens: 0 });
+  assert.equal(adapter.stats.sessionInputTokens, 1000 + 1000);
+  assert.equal(adapter.stats.sessionCachedTokens, 800 + 990);
+  assert.equal(adapter.stats.sessionOutputTokens, 70);
+  assert.equal(adapter.stats.inputTokens, 10, "the per-turn field keeps its meaning");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

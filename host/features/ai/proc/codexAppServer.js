@@ -123,11 +123,16 @@ export class CodexAppServer {
 
     rpc.on("thread/tokenUsage/updated", (p) => {
       const last = p.tokenUsage?.last || {};
+      const total = p.tokenUsage?.total || {};
       this.onEvent?.("stats", {
         inputTokens: last.inputTokens || 0,
         outputTokens: last.outputTokens || 0,
         cachedTokens: last.cachedInputTokens || 0,
         reasoningTokens: last.reasoningOutputTokens || 0,
+        // The thread's running total, assigned: this notification can fire several times a turn.
+        sessionInputTokens: total.inputTokens || 0,
+        sessionCachedTokens: total.cachedInputTokens || 0,
+        sessionOutputTokens: total.outputTokens || 0,
         ...(p.tokenUsage?.modelContextWindow ? { contextWindow: p.tokenUsage.modelContextWindow } : {})
       });
     });

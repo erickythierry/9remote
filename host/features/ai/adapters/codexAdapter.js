@@ -1,4 +1,5 @@
 // Adapter for the OpenAI Codex CLI.
+import { addSessionUsage } from "../usage.js";
 import { getExtendedEnv } from "./env.js";
 import { stageAttachment, buildAttachedPrompt } from "../aiAttachment.js";
 import { AgentProc } from "../proc/agentProc.js";
@@ -522,6 +523,7 @@ export class CodexAdapter {
       this.stats.outputTokens = event.usage.output_tokens || 0;
       this.stats.cachedTokens = event.usage.cached_input_tokens || 0;
       this.stats.reasoningTokens = event.usage.reasoning_output_tokens || 0;
+      addSessionUsage(this.stats, { input: this.stats.inputTokens, cached: this.stats.cachedTokens, output: this.stats.outputTokens });
       this.stats.totalTurns += 1;
       this.onEvent?.("stats", { stats: this.stats });
       return;

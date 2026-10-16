@@ -9,6 +9,7 @@ import { stageAttachment } from "../aiAttachment.js";
 import { OmpRpcClient } from "../ompRpcClient.js";
 import { diffFor } from "../opencodePart.js";
 import { getExtendedEnv } from "./env.js";
+import { addSessionUsage } from "../usage.js";
 
 const logger = createLogger("ai");
 
@@ -418,6 +419,11 @@ export class OmpAdapter {
     this.stats.inputTokens += usage.input || 0;
     this.stats.outputTokens += usage.output || 0;
     this.stats.reasoningTokens += usage.reasoningTokens || usage.reasoning || 0;
+    addSessionUsage(this.stats, {
+      input: (usage.input || 0) + (usage.cacheRead || 0) + (usage.cacheWrite || 0),
+      cached: usage.cacheRead || 0,
+      output: usage.output || 0
+    });
     this.stats.contextTokens = usage.contextTokens || usage.input || this.stats.contextTokens || 0;
     if (usage.contextWindow) this.stats.contextWindow = usage.contextWindow;
     this.onEvent?.("stats", { stats: this.stats });

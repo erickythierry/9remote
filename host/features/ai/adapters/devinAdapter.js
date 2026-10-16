@@ -9,6 +9,7 @@ import { stageAttachment, buildAttachedPrompt } from "../aiAttachment.js";
 import { buildEditDiff, buildEditPatch } from "./claudeAdapter.js";
 import { getExtendedEnv } from "./env.js";
 import { createLogger } from "../../../lib/logger.js";
+import { addSessionUsage } from "../usage.js";
 
 const logger = createLogger("ai");
 
@@ -377,6 +378,7 @@ export class DevinAdapter {
     this.stats.inputTokens = usage.inputTokens || 0;
     this.stats.outputTokens = usage.outputTokens || 0;
     this.stats.cachedTokens = usage.cachedReadTokens || 0;
+    addSessionUsage(this.stats, { input: this.stats.inputTokens, cached: this.stats.cachedTokens, output: this.stats.outputTokens });
     this.stats.totalTurns += 1;
     const stop = String(result?.stopReason || "end_turn");
     // The stop word rides the sentence — the row used to say only the generic "ended in an

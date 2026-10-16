@@ -10,6 +10,7 @@
 // LAST step's finish reason: the CLI's own closed set is stop | length |
 // tool-calls | content-filter | error | unknown (packages/llm/src/schema/ids.ts),
 // and only "tool-calls" means another step follows. Everything else ends the turn.
+import { addSessionUsage } from "./usage.js";
 import { diffFor } from "./opencodePart.js";
 
 // Records whose whole point is bookkeeping between the harness and itself: the
@@ -77,6 +78,12 @@ export function createOpencodeBusParser({ onEvent, stats = {} }) {
     // Each step resends the growing conversation, so the LAST step's input is
     // what the window currently holds — the sum would bill it repeatedly.
     stats.contextTokens = tokens.input || 0;
+    const cache = tokens.cache || {};
+    addSessionUsage(stats, {
+      input: (tokens.input || 0) + (cache.read || 0) + (cache.write || 0),
+      cached: cache.read || 0,
+      output: tokens.output || 0
+    });
   };
 
   const toolName = (data, fallback = "tool") => data.name || data.tool || names.get(data.callID) || fallback;

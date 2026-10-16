@@ -145,6 +145,16 @@ export function contextLabel(stats = {}, fallbackWindow = 0) {
   return { text: `${formatTokens(used)} / ${formatTokens(window)} · ${percent}%`, percent };
 }
 
+// "in 4.9M (cache 93%) · out 4.8K": what the whole chat sent and got back, like the CLI's footer.
+// Null until an engine reports session totals (the cache share needs a non-zero input).
+export function usageLabel(stats = {}) {
+  const input = stats.sessionInputTokens || 0;
+  const output = stats.sessionOutputTokens || 0;
+  if (!input && !output) return null;
+  const cache = input ? ` (cache ${Math.round(Math.min(1, (stats.sessionCachedTokens || 0) / input) * 100)}%)` : "";
+  return `in ${formatTokens(input)}${cache} · out ${formatTokens(output)}`;
+}
+
 // Estimate tokens streamed across all messages in current turn.
 export function estimateTurnTokens(messages = []) {
   let chars = 0;

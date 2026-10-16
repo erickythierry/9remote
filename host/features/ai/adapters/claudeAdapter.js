@@ -1,6 +1,7 @@
 // Claude Code CLI adapter (--input-format=stream-json). Two carriers (direct spawn /
 // daemon) share this one parser so the paths cannot drift apart.
 import { getExtendedEnv } from "./env.js";
+import { addSessionUsage } from "../usage.js";
 import { stageAttachment } from "../aiAttachment.js";
 import { LocalProc } from "../proc/localProc.js";
 import { decodeLine } from "../proc/daemonProc.js";
@@ -337,6 +338,11 @@ export class ClaudeAdapter {
         this.stats.outputTokens = data.usage.output_tokens || 0;
         this.stats.cacheReadInputTokens = data.usage.cache_read_input_tokens || 0;
         this.stats.cacheCreationInputTokens = data.usage.cache_creation_input_tokens || 0;
+        addSessionUsage(this.stats, {
+          input: this.stats.inputTokens + this.stats.cacheReadInputTokens + this.stats.cacheCreationInputTokens,
+          cached: this.stats.cacheReadInputTokens,
+          output: this.stats.outputTokens
+        });
       }
       // modelUsage alone states the window size; the widest across models is what can overflow.
       if (data.modelUsage) {

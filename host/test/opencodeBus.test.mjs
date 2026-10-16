@@ -114,6 +114,16 @@ test("tokens bill per step, and the context holds what the LAST step sent", () =
   assert.equal(stats.totalTurns, 1);
 });
 
+test("session totals add each step's input with the cache it read and wrote", () => {
+  const { stats } = parse([
+    env("session.next.step.ended", { finish: "tool-calls", tokens: { input: 100, output: 10, reasoning: 0, cache: { read: 800, write: 50 } } }),
+    env("session.next.step.ended", { finish: "stop", tokens: { input: 20, output: 5, reasoning: 0, cache: { read: 950, write: 0 } } })
+  ]);
+  assert.equal(stats.sessionInputTokens, 950 + 970);
+  assert.equal(stats.sessionCachedTokens, 1750);
+  assert.equal(stats.sessionOutputTokens, 15);
+});
+
 test("every other terminal finish ends the turn, not just stop", () => {
   // The CLI's own closed set (llm/schema/ids.ts): stop, length, tool-calls,
   // content-filter, error, unknown. Anything but tool-calls is the last step.

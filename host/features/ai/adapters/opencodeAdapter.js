@@ -4,6 +4,7 @@ import { createLogger } from "../../../lib/logger.js";
 import { stageAttachment, stagedPaths } from "../aiAttachment.js";
 import * as opencodeServer from "../opencodeServer.js";
 import { createOpencodeBusParser, questionCardInput } from "../opencodeBus.js";
+import { addSessionUsage } from "../usage.js";
 import { opencodePartEvents } from "../opencodePart.js";
 import { OPENCODE_MODE_AGENTS, OPENCODE_TITLE_FETCH_DELAY_MS, OPENCODE_POLL_MS } from "../constants.js";
 
@@ -511,6 +512,12 @@ export class OpenCodeAdapter {
             this.stats.outputTokens = (this.stats.outputTokens || 0) + (t.output || 0);
             this.stats.reasoningTokens = (this.stats.reasoningTokens || 0) + (t.reasoning || 0);
             this.stats.contextTokens = t.input || 0;
+            const cache = t.cache || {};
+            addSessionUsage(this.stats, {
+              input: (t.input || 0) + (cache.read || 0) + (cache.write || 0),
+              cached: cache.read || 0,
+              output: t.output || 0
+            });
           }
         }
         for (const part of m.parts || []) {

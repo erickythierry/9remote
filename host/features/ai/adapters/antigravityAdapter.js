@@ -7,6 +7,7 @@ import { AgentProc } from "../proc/agentProc.js";
 import { createLogger } from "../../../lib/logger.js";
 import { stageAttachment, buildAttachedPrompt } from "../aiAttachment.js";
 import { recoverFromAntigravityTranscript } from "../transcript.js";
+import { addSessionUsage } from "../usage.js";
 
 const logger = createLogger("ai");
 
@@ -537,6 +538,7 @@ export class AntigravityAdapter {
     this.stats.outputTokens += usage.output_tokens || 0;
     this.stats.thinkingTokens += usage.thinking_tokens || 0;
     this.stats.cachedTokens += usage.cache_read_tokens || 0;
+    addSessionUsage(this.stats, { input: usage.input_tokens || 0, cached: usage.cache_read_tokens || 0, output: usage.output_tokens || 0 });
     // The sum above bills every step; each step resends the growing conversation, so
     // the LAST step's input is what the window currently holds.
     this.stats.contextTokens = usage.input_tokens || 0;

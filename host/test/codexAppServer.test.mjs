@@ -182,6 +182,24 @@ await test("token usage arrives on its own notification and reaches the stats", 
   assert.equal(stats.cachedTokens, 80);
   assert.equal(stats.outputTokens, 20);
   assert.equal(stats.contextWindow, 200000);
+  assert.equal(stats.sessionInputTokens, 100);
+  assert.equal(stats.sessionCachedTokens, 80);
+  assert.equal(stats.sessionOutputTokens, 20);
+});
+
+// The notification can fire several times in a turn; adding would count the thread again each time.
+await test("codex session totals are the thread's running total, assigned and not added", async () => {
+  const { proc, of } = await started();
+  const usage = (total) => proc.emit({
+    jsonrpc: "2.0", method: "thread/tokenUsage/updated",
+    params: { threadId: "t-1", turnId: "turn-1", tokenUsage: { total, last: total, modelContextWindow: 200000 } }
+  });
+  usage({ inputTokens: 100, cachedInputTokens: 80, outputTokens: 20 });
+  usage({ inputTokens: 300, cachedInputTokens: 250, outputTokens: 60 });
+  const stats = of("stats").pop();
+  assert.equal(stats.sessionInputTokens, 300);
+  assert.equal(stats.sessionCachedTokens, 250);
+  assert.equal(stats.sessionOutputTokens, 60);
 });
 
 // ── thinking, the reason this transport exists ──

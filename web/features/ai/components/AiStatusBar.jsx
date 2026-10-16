@@ -5,7 +5,7 @@ import Icon, { Target, SquarePen, ChevronUp, Check, LayoutDashboard } from "@/sh
 import { getEngineConfig } from "../registry";
 import { useAiStore } from "@/shared/stores/aiStore";
 import { vibrate } from "@/shared/utils/vibration";
-import { contextLabel } from "../lib/liveStatus";
+import { contextLabel, usageLabel } from "../lib/liveStatus";
 import TerminalBeam from "@/shared/components/ui/TerminalBeam";
 import BranchBadge from "@/features/terminal/components/BranchBadge";
 import { useWorkspaceGit } from "@/features/terminal/hooks/useWorkspaceGit";
@@ -37,6 +37,9 @@ export const AiStatusBar = memo(function AiStatusBar({
   // The model catalog states a window before any turn has run; the live stats win once they do.
   const catalogWindow = metadata?.modelOptions?.find((m) => m.id === metadata?.model)?.contextWindow || 0;
   const context = contextLabel(stats, catalogWindow);
+  const usage = usageLabel(stats);
+  // Wide screens always show the totals; a phone has no room, so a tap on the context readout opens them.
+  const [usageOpen, setUsageOpen] = useState(false);
   const modes = getEngineConfig(engine).permissionModes || [];
   // Before the host answers, the engine's own default is the truth — not "default",
   // which is a real mode id on only some engines.
@@ -136,14 +139,21 @@ export const AiStatusBar = memo(function AiStatusBar({
 
       {/* Right: context window, branch (non-default only), New chat */}
       <div className="flex items-center gap-2.5 shrink-0">
+        {usage && (
+          <span className={`${usageOpen ? "flex" : "hidden sm:flex"} items-center whitespace-nowrap`} title="Tokens sent and received in this chat">
+            {usage}
+          </span>
+        )}
         {context && (
-          <span
+          <button
+            type="button"
+            onClick={() => { vibrate(); setUsageOpen((v) => !v); }}
             className={`flex items-center gap-1 whitespace-nowrap ${context.percent >= 95 ? "text-danger" : context.percent >= 80 ? "text-warning" : ""}`}
             title="Context window used"
           >
             <LayoutDashboard size={11} className="text-accent shrink-0" />
             <span>{context.text}</span>
-          </span>
+          </button>
         )}
         {branch && !isDefaultBranch(branch) && (
           <BranchBadge

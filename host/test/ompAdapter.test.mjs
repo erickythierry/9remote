@@ -64,6 +64,11 @@ test("assistant usage accumulates into stats with a context denominator", () => 
   assert.equal(s[1].stats.inputTokens, 100);
   assert.equal(s[1].stats.contextTokens, 120000);
   assert.equal(s[1].stats.contextWindow, 200000);
+  feed({ type: "message_end", message: { role: "assistant", usage: { input: 10, output: 5, cacheRead: 900, cacheWrite: 40 } } });
+  const last = of("stats").pop();
+  assert.equal(last[1].stats.sessionInputTokens, 100 + 950);
+  assert.equal(last[1].stats.sessionCachedTokens, 900);
+  assert.equal(last[1].stats.sessionOutputTokens, 55);
 });
 
 test("agent_end ends the turn unless more work is scheduled", () => {

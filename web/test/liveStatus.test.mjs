@@ -4,7 +4,7 @@
 //
 // Run: node --import ./test/loader-alias.mjs web/test/liveStatus.test.mjs
 import assert from "node:assert/strict";
-import { describeLive, estimateTurnTokens, countTurnChanges, contextUsedTokens, contextFill, contextLabel, formatTokens } from "../features/ai/lib/liveStatus.js";
+import { describeLive, estimateTurnTokens, countTurnChanges, contextUsedTokens, contextFill, contextLabel, usageLabel, formatTokens } from "../features/ai/lib/liveStatus.js";
 
 let pass = 0, fail = 0;
 const test = (name, fn) => {
@@ -289,6 +289,14 @@ test("the context label reads used / window · percent, and degrades to tokens a
   assert.deepEqual(contextLabel({ contextTokens: 45000 }), { text: "45k", percent: null });
   assert.equal(contextLabel({}), null);
   assert.equal(contextLabel({ contextTokens: 3e6, contextWindow: 1e6 }).percent, 100);
+});
+
+test("the usage label reads in (cache %) · out, and stays hidden until an engine reports totals", () => {
+  assert.equal(usageLabel({ sessionInputTokens: 4900000, sessionCachedTokens: 4557000, sessionOutputTokens: 4800 }), "in 4.9M (cache 93%) · out 4.8k");
+  assert.equal(usageLabel({ sessionInputTokens: 1000, sessionCachedTokens: 5000, sessionOutputTokens: 10 }), "in 1k (cache 100%) · out 10", "cache never past the input");
+  assert.equal(usageLabel({ sessionOutputTokens: 50 }), "in 0 · out 50", "no input means no cache share to claim");
+  assert.equal(usageLabel({}), null);
+  assert.equal(usageLabel(), null);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
