@@ -63,6 +63,7 @@ test("assistant usage accumulates into stats with a context denominator", () => 
   const [s] = of("stats");
   assert.equal(s[1].stats.inputTokens, 100);
   assert.equal(s[1].stats.contextTokens, 120000);
+  assert.equal(s[1].stats.contextWindow, 200000);
 });
 
 test("agent_end ends the turn unless more work is scheduled", () => {

@@ -127,7 +127,8 @@ export class CodexAppServer {
         inputTokens: last.inputTokens || 0,
         outputTokens: last.outputTokens || 0,
         cachedTokens: last.cachedInputTokens || 0,
-        reasoningTokens: last.reasoningOutputTokens || 0
+        reasoningTokens: last.reasoningOutputTokens || 0,
+        ...(p.tokenUsage?.modelContextWindow ? { contextWindow: p.tokenUsage.modelContextWindow } : {})
       });
     });
 

@@ -419,6 +419,7 @@ export class OmpAdapter {
     this.stats.outputTokens += usage.output || 0;
     this.stats.reasoningTokens += usage.reasoningTokens || usage.reasoning || 0;
     this.stats.contextTokens = usage.contextTokens || usage.input || this.stats.contextTokens || 0;
+    if (usage.contextWindow) this.stats.contextWindow = usage.contextWindow;
     this.onEvent?.("stats", { stats: this.stats });
   }
 

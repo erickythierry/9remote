@@ -181,6 +181,7 @@ await test("token usage arrives on its own notification and reaches the stats", 
   assert.equal(stats.inputTokens, 100, "the window's fill is the turn's own input, not the session total");
   assert.equal(stats.cachedTokens, 80);
   assert.equal(stats.outputTokens, 20);
+  assert.equal(stats.contextWindow, 200000);
 });
 
 // ── thinking, the reason this transport exists ──

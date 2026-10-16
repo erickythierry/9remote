@@ -4,7 +4,7 @@
 //
 // Run: node --import ./test/loader-alias.mjs web/test/liveStatus.test.mjs
 import assert from "node:assert/strict";
-import { describeLive, estimateTurnTokens, countTurnChanges, contextUsedTokens, contextFill, formatTokens } from "../features/ai/lib/liveStatus.js";
+import { describeLive, estimateTurnTokens, countTurnChanges, contextUsedTokens, contextFill, contextLabel, formatTokens } from "../features/ai/lib/liveStatus.js";
 
 let pass = 0, fail = 0;
 const test = (name, fn) => {
@@ -281,6 +281,14 @@ test("token counts use the CLI's shorthand", () => {
   assert.equal(formatTokens(1234567), "1.2M");
   assert.equal(formatTokens(999), "999");
   assert.equal(formatTokens(0), "0");
+});
+
+test("the context label reads used / window · percent, and degrades to tokens alone", () => {
+  assert.deepEqual(contextLabel({ contextTokens: 45000, contextWindow: 200000 }), { text: "45k / 200k · 23%", percent: 23 });
+  assert.deepEqual(contextLabel({ contextTokens: 45000 }, 1000000), { text: "45k / 1M · 5%", percent: 5 });
+  assert.deepEqual(contextLabel({ contextTokens: 45000 }), { text: "45k", percent: null });
+  assert.equal(contextLabel({}), null);
+  assert.equal(contextLabel({ contextTokens: 3e6, contextWindow: 1e6 }).percent, 100);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

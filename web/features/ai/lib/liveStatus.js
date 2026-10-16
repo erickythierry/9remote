@@ -135,6 +135,16 @@ export function contextFill(stats = {}) {
   return window > 0 ? Math.min(1, used / window) : null;
 }
 
+// "45k / 200k · 22%" — tokens alone when no window size is known (claude only learns it after its first turn).
+export function contextLabel(stats = {}, fallbackWindow = 0) {
+  const used = contextUsedTokens(stats);
+  if (!used) return null;
+  const window = stats.contextWindow || fallbackWindow || 0;
+  if (!window) return { text: formatTokens(used), percent: null };
+  const percent = Math.round(Math.min(1, used / window) * 100);
+  return { text: `${formatTokens(used)} / ${formatTokens(window)} · ${percent}%`, percent };
+}
+
 // Estimate tokens streamed across all messages in current turn.
 export function estimateTurnTokens(messages = []) {
   let chars = 0;
