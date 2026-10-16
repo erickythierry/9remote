@@ -7,6 +7,7 @@ import { scaleImageBuffer } from "./FileHandler.js";
 import {
   scanReposCached, invalidateRepoScan, parseWorktreeList, parseBranchList, terminalsInWorktree
 } from "../gitRepoScan.js";
+import { switchBranch } from "../gitBranchSwitch.js";
 import { listSessionRoots } from "../../terminal/terminalSocket.js";
 import { destroySessionById } from "../../terminal/handlers/SessionHandler.js";
 import { getSessionAgent } from "../../terminal/statusManager.js";
@@ -601,6 +602,15 @@ export function setupGitHandlers(socket) {
       callback({ success: true, branch });
     } catch (error) {
       callback({ success: false, error: error.message });
+    }
+  });
+
+  socket.on("gitBranchSwitch", async ({ repoPath, branch, create, stash }, callback) => {
+    if (!repoPath || !findGitRoot(repoPath)) return callback({ success: false, code: "notRepo", error: "Not a git repository" });
+    try {
+      callback(await switchBranch(repoPath, { branch, create, stash }, runGit));
+    } catch (error) {
+      callback({ success: false, code: "unknown", error: error.message });
     }
   });
 }
