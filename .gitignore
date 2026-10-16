@@ -55,6 +55,7 @@ landing/template.html
 .devcontainer/devcontainer.json
 dist/*
 9remote-*.tgz
+*.apk
 */.next/*
 */node_modules/*
 client/out/*
@@ -103,8 +104,12 @@ expo/fastlane/metadata/review_information/demo_account_required.txt
 web/.secrets-hash-*
 expo/.wrangler/*
 
-# Mobile app moved to decolua/9remote-expo (private)
-expo/
+# Mobile app (recreated for self-hosted)
+expo/node_modules/
+expo/.expo/
+expo/dist/
+expo/android/
+expo/ios/
 
 # Local-only marketing notes
 .marketing/
@@ -115,3 +120,7 @@ codegraph.json
 
 # Static-export build mirror (scripts/buildWebStatic.mjs)
 web/.staticBuild/
+
+# Local-only
+mise.toml
+APK_ANALYSIS.md
