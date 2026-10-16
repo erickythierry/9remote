@@ -1,0 +1,25 @@
+{
+  "name": "9remote-mobile",
+  "version": "2.4.3",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "1.23.1",
+    "expo": "~52.0.0",
+    "expo-build-properties": "~0.13.3",
+    "expo-constants": "~17.0.8",
+    "expo-haptics": "~14.0.1",
+    "expo-screen-orientation": "~8.0.4",
+    "expo-status-bar": "~2.0.1",
+    "expo-web-browser": "~14.0.2",
+    "react": "18.3.1",
+    "react-native": "0.76.9",
+    "react-native-safe-area-context": "4.12.0",
+    "react-native-webview": "13.12.5"
+  },
+  "private": true
+}
