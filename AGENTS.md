@@ -32,6 +32,8 @@ npm run pc:build           # build host pkg, then sign + notarize the macOS app
 npm run secrets:sync       # push web/.dev.vars secrets to Cloudflare (--env=production|dev)
 ```
 
+**Self-hosted build (this fork, used by the self-hosted APK):** always prefix with `SELF_HOSTED=1`, e.g. `SELF_HOSTED=1 npm run host:build`. Without it, `buildPkg.js` silently rebuilds `host/dist/web` in upstream mode: the login then goes to the official Worker on `9remote.cc` and the APK fails with `Session not found or expired`. The APK has no auto-update (it is just a WebView of the host), so this error always means a wrong web build. Check: the `web/shared/constants/API.js` chunk in `host/dist/web/_next/static/chunks` must have `IS_SELF_HOSTED` minified to `!0`. Leftover `9remote.cc` strings in dead branches are expected. See `SELF_HOSTED.md`.
+
 Host-local scripts (`cd host`): `npm run dev` (nodemon TUI), `npm run dev:ui` (server + Vite UI), `npm run build:ui` (Vite build of `host/ui`).
 
 No test runner is configured. ESLint via `eslint.config.mjs` (next config). Lint: `npx eslint .`.
