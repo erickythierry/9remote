@@ -191,6 +191,7 @@ export default {
     placeholder: "ターミナル名 (任意)",
     newButton: "+ 新規",
     empty: "アクティブなセッションがありません",
+    markAllRead: "Mark all as read",
     emptyHint: "新しいセッションを作成して開始してください",
     created: "作成日時 {time}",
     deleteTitle: "セッションを削除",

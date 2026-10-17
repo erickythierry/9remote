@@ -191,6 +191,7 @@ export default {
     placeholder: "Назва терміналу (необов'язково)",
     newButton: "+ Новий",
     empty: "Немає активних сесій",
+    markAllRead: "Mark all as read",
     emptyHint: "Створіть нову сесію, щоб почати",
     created: "Створено {time}",
     deleteTitle: "Видалити сесію",

@@ -191,6 +191,7 @@ export default {
     placeholder: "اسم الطرفية (اختياري)",
     newButton: "+ جديد",
     empty: "لا توجد جلسات نشطة",
+    markAllRead: "Mark all as read",
     emptyHint: "أنشئ جلسة جديدة للبدء",
     created: "أُنشئت {time}",
     deleteTitle: "حذف الجلسة",

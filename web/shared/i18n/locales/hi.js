@@ -191,6 +191,7 @@ export default {
     placeholder: "टर्मिनल नाम (वैकल्पिक)",
     newButton: "+ नया",
     empty: "कोई सक्रिय सत्र नहीं",
+    markAllRead: "Mark all as read",
     emptyHint: "शुरू करने के लिए एक नया सत्र बनाएँ",
     created: "बनाया गया {time}",
     deleteTitle: "सत्र हटाएँ",

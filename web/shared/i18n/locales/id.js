@@ -191,6 +191,7 @@ export default {
     placeholder: "Nama terminal (opsional)",
     newButton: "+ Baru",
     empty: "Tidak ada sesi aktif",
+    markAllRead: "Mark all as read",
     emptyHint: "Buat sesi baru untuk memulai",
     created: "Dibuat {time}",
     deleteTitle: "Hapus Sesi",

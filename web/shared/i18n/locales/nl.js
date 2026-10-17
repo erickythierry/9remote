@@ -191,6 +191,7 @@ export default {
     placeholder: "Terminalnaam (optioneel)",
     newButton: "+ Nieuw",
     empty: "Geen actieve sessies",
+    markAllRead: "Mark all as read",
     emptyHint: "Maak een nieuwe sessie aan om te beginnen",
     created: "Aangemaakt {time}",
     deleteTitle: "Sessie verwijderen",

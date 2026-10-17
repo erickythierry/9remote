@@ -191,6 +191,7 @@ export default {
     placeholder: "نام ترمینال (اختیاری)",
     newButton: "+ جدید",
     empty: "نشست فعالی وجود ندارد",
+    markAllRead: "Mark all as read",
     emptyHint: "برای شروع یک نشست جدید ایجاد کنید",
     created: "ایجاد شده {time}",
     deleteTitle: "حذف نشست",

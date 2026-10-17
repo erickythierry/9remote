@@ -191,6 +191,7 @@ export default {
     placeholder: "터미널 이름 (선택 사항)",
     newButton: "+ 새로 만들기",
     empty: "활성 세션 없음",
+    markAllRead: "Mark all as read",
     emptyHint: "새 세션을 생성하여 시작하세요",
     created: "{time}에 생성됨",
     deleteTitle: "세션 삭제",

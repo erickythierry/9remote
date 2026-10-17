@@ -191,6 +191,7 @@ export default {
     placeholder: "Nome do terminal (opcional)",
     newButton: "+ Novo",
     empty: "Nenhuma sessão ativa",
+    markAllRead: "Marcar tudo como lido",
     emptyHint: "Crie uma nova sessão para começar",
     created: "Criado {time}",
     deleteTitle: "Excluir Sessão",

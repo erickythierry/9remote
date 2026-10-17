@@ -191,6 +191,7 @@ export default {
     placeholder: "Имя терминала (необязательно)",
     newButton: "+ Новый",
     empty: "Нет активных сессий",
+    markAllRead: "Mark all as read",
     emptyHint: "Создайте новую сессию, чтобы начать",
     created: "Создано {time}",
     deleteTitle: "Удалить сессию",

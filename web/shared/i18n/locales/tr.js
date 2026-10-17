@@ -191,6 +191,7 @@ export default {
     placeholder: "Terminal adı (isteğe bağlı)",
     newButton: "+ Yeni",
     empty: "Aktif oturum yok",
+    markAllRead: "Mark all as read",
     emptyHint: "Başlamak için yeni bir oturum oluşturun",
     created: "Oluşturuldu {time}",
     deleteTitle: "Oturumu Sil",

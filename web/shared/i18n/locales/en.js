@@ -302,6 +302,7 @@ export default {
     placeholder: "Terminal name (optional)",
     newButton: "+ New",
     empty: "No active sessions",
+    markAllRead: "Mark all as read",
     emptyHint: "Create a new session to get started",
     created: "Created {time}",
     deleteTitle: "Delete Session",

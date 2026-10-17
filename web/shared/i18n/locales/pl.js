@@ -191,6 +191,7 @@ export default {
     placeholder: "Nazwa terminala (opcjonalnie)",
     newButton: "+ Nowy",
     empty: "Brak aktywnych sesji",
+    markAllRead: "Mark all as read",
     emptyHint: "Utwórz nową sesję, aby rozpocząć",
     created: "Utworzono {time}",
     deleteTitle: "Usuń sesję",

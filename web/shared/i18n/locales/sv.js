@@ -191,6 +191,7 @@ export default {
     placeholder: "Terminalnamn (valfritt)",
     newButton: "+ Ny",
     empty: "Inga aktiva sessioner",
+    markAllRead: "Mark all as read",
     emptyHint: "Skapa en ny session för att komma igång",
     created: "Skapad {time}",
     deleteTitle: "Radera session",

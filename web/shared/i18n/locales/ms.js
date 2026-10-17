@@ -191,6 +191,7 @@ export default {
     placeholder: "Nama terminal (pilihan)",
     newButton: "+ Baharu",
     empty: "Tiada sesi aktif",
+    markAllRead: "Mark all as read",
     emptyHint: "Cipta sesi baharu untuk bermula",
     created: "Dicipta {time}",
     deleteTitle: "Padam Sesi",

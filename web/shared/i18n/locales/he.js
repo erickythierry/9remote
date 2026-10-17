@@ -191,6 +191,7 @@ export default {
     placeholder: "שם טרמינל (אופציונלי)",
     newButton: "+ חדש",
     empty: "אין הפעלות פעילות",
+    markAllRead: "Mark all as read",
     emptyHint: "צור הפעלה חדשה כדי להתחיל",
     created: "נוצר {time}",
     deleteTitle: "מחק הפעלה",

@@ -191,6 +191,7 @@ export default {
     placeholder: "终端名称（可选）",
     newButton: "+ 新建",
     empty: "没有活动会话",
+    markAllRead: "Mark all as read",
     emptyHint: "创建一个新会话以开始",
     created: "创建于 {time}",
     deleteTitle: "删除会话",

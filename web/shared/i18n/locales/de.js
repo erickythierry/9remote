@@ -191,6 +191,7 @@ export default {
     placeholder: "Terminalname (optional)",
     newButton: "+ Neu",
     empty: "Keine aktiven Sitzungen",
+    markAllRead: "Mark all as read",
     emptyHint: "Erstellen Sie eine neue Sitzung, um zu beginnen",
     created: "Erstellt {time}",
     deleteTitle: "Sitzung löschen",

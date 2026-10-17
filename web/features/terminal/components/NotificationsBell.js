@@ -9,6 +9,7 @@ import { statusVisual } from "@/shared/utils/statusVisual";
 import { statusItems, attentionSummary } from "../lib/sessionStatusSummary";
 import { SHORTCUTS, SHORTCUT_KEY_CLS, shortcutKeys } from "../constants/shortcuts";
 import { useAllSessionStatus } from "@/shared/transport/hostConn";
+import { useNotificationStore } from "@/shared/stores/notificationStore";
 
 const ATTENTION_NEXT = SHORTCUTS.find((s) => s.id === "attentionNext");
 
@@ -37,6 +38,11 @@ export default function NotificationsBell({ sessions = [], allSessions = [], ses
     (it) => it.state === "blocked" || it.state === "done"
   );
   const { total: count } = attentionSummary(sessionStatus, allSessions);
+  const doneItems = items.filter((it) => it.state === "done");
+  const markAllAsRead = () => {
+    const clearNotification = useNotificationStore.getState().clearNotification;
+    for (const it of doneItems) clearNotification(it.id);
+  };
 
   // Resolve name from the full session list so cross-group notifications show
   // their real name instead of a truncated id.
@@ -124,13 +130,23 @@ export default function NotificationsBell({ sessions = [], allSessions = [], ses
         <div className="bg-surface-2 border border-border-subtle rounded-brand-lg shadow-lg w-72 max-h-[60vh] overflow-y-auto flex flex-col">
           <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle flex-shrink-0">
             <span className="text-sm font-semibold">{t("notifications.title")}</span>
-            <button
+            <div className="flex items-center gap-2">
+              {doneItems.length > 0 && (
+                <button
+                  onClick={markAllAsRead}
+                  className="text-[11px] text-text-muted hover:text-text transition-colors"
+                >
+                  {t("notifications.markAllRead")}
+                </button>
+              )}
+              <button
               onClick={() => setOpen(false)}
               className="p-1 text-text-muted hover:text-text rounded transition-colors"
               title={t("common.close")}
             >
-              <X size={14} />
-            </button>
+                <X size={14} />
+              </button>
+            </div>
           </div>
 
           {!items.length ? (

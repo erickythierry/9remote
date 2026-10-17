@@ -191,6 +191,7 @@ export default {
     placeholder: "ชื่อเทอร์มินัล (ไม่บังคับ)",
     newButton: "+ ใหม่",
     empty: "ไม่มีเซสชันที่ใช้งานอยู่",
+    markAllRead: "Mark all as read",
     emptyHint: "สร้างเซสชันใหม่เพื่อเริ่มต้น",
     created: "สร้างเมื่อ {time}",
     deleteTitle: "ลบเซสชัน",

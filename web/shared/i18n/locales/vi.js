@@ -210,6 +210,7 @@ export default {
     placeholder: "Tên terminal (tùy chọn)",
     newButton: "+ Tạo mới",
     empty: "Không có session nào",
+    markAllRead: "Mark all as read",
     emptyHint: "Tạo session mới để bắt đầu",
     created: "Tạo lúc {time}",
     deleteTitle: "Xóa Session",
