@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { X, History, Trash2, Search, GitFork } from "@/shared/components/ui/Icon";
+import { X, History, Trash2, Search, GitFork, ListChecks } from "@/shared/components/ui/Icon";
 import { vibrate } from "@/shared/utils/vibration";
 import { useI18n } from "@/shared/i18n";
 import { agentIconUrl, AGENT_ICON_CLS } from "@/features/terminal/constants/agentCli";
@@ -57,11 +57,33 @@ export default function AgentHistoryModal({
   const [activeQuery, setActiveQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchTruncated, setSearchTruncated] = useState(false);
+
+  // Multi-selection state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState(() => new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
   // Same path on two machines is two histories — key through the host scope.
   const historyKey = scope ? `${scope}|${cwd}` : cwd;
 
   const rawSessions = useTerminalStore((s) => (cwd ? s.agentHistory[historyKey]?.sessions : null));
   const sessions = useMemo(() => rawSessions || [], [rawSessions]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedKeys(new Set());
+      setSelectMode(false);
+      setConfirmBulkDelete(false);
+      setDeletingSession(null);
+      setLastSelectedIndex(null);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    setLastSelectedIndex(null);
+  }, [query, selectedAgent]);
 
   // 3+ chars widens the box's local filter into a host-wide content search
   // across every directory's transcripts; rows land in the same list below.
@@ -89,11 +111,20 @@ export default function AgentHistoryModal({
     if (!isOpen) return;
     document.activeElement?.blur?.();
     const handleEscape = (e) => {
-      if (e.key === "Escape" && !deletingSession) onClose();
+      if (e.key === "Escape" && !deletingSession && !confirmBulkDelete) {
+        if (selectedKeys.size > 0 || selectMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          setSelectedKeys(new Set());
+          setSelectMode(false);
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose, deletingSession]);
+  }, [isOpen, onClose, deletingSession, confirmBulkDelete, selectedKeys.size, selectMode]);
 
   const agentTypes = useMemo(() => {
     const set = new Set();
@@ -138,6 +169,63 @@ export default function AgentHistoryModal({
     return out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   }, [sessions, globalRows, searchActive, query, selectedAgent]);
 
+  const deletableFiltered = useMemo(() => {
+    return filtered.filter((row) => {
+      const openId = row.openSessionId && liveSessionIds?.has(row.openSessionId) ? row.openSessionId : null;
+      return !openId && !row.foreign;
+    });
+  }, [filtered, liveSessionIds]);
+
+  const isAllSelected = deletableFiltered.length > 0 && deletableFiltered.every((r) => selectedKeys.has(`${r.agent}:${r.sessionId}`));
+  const isIndeterminate = !isAllSelected && deletableFiltered.some((r) => selectedKeys.has(`${r.agent}:${r.sessionId}`));
+
+  const handleToggleSelectAll = () => {
+    vibrate();
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (isAllSelected) {
+        for (const r of deletableFiltered) {
+          next.delete(`${r.agent}:${r.sessionId}`);
+        }
+      } else {
+        for (const r of deletableFiltered) {
+          next.add(`${r.agent}:${r.sessionId}`);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleRowSelect = (rowKey, index, isShift = false) => {
+    vibrate();
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (isShift && lastSelectedIndex !== null && lastSelectedIndex !== index) {
+        const start = Math.min(lastSelectedIndex, index);
+        const end = Math.max(lastSelectedIndex, index);
+        for (let i = start; i <= end; i++) {
+          const r = filtered[i];
+          if (!r) continue;
+          const openId = r.openSessionId && liveSessionIds?.has(r.openSessionId) ? r.openSessionId : null;
+          if (!openId && !r.foreign) {
+            next.add(`${r.agent}:${r.sessionId}`);
+          }
+        }
+      } else {
+        if (next.has(rowKey)) {
+          next.delete(rowKey);
+        } else {
+          next.add(rowKey);
+        }
+      }
+      return next;
+    });
+    setLastSelectedIndex(index);
+    if (!selectMode) {
+      setSelectMode(true);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleResume = (row, openId) => {
@@ -152,11 +240,22 @@ export default function AgentHistoryModal({
     const { agent, sessionId } = deletingSession;
     vibrate();
 
+    const rowKey = `${agent}:${sessionId}`;
+
     // Optimistically remove from store
     const nextSessions = sessions.filter((s) => !(s.agent === agent && s.sessionId === sessionId));
     useTerminalStore.getState().setAgentHistory(historyKey, nextSessions);
+    setGlobalRows((prev) => prev.filter((s) => !(s.agent === agent && s.sessionId === sessionId)));
+    setSelectedKeys((prev) => {
+      if (prev.has(rowKey)) {
+        const next = new Set(prev);
+        next.delete(rowKey);
+        return next;
+      }
+      return prev;
+    });
 
-    busRef?.current?.emit("deleteAgentSession", { agent, sessionId, cwd }, (res) => {
+    busRef?.current?.emit("deleteAgentSession", { agent, sessionId, cwd: deletingSession.cwd || cwd }, (res) => {
       if (!res?.success) {
         // Re-fetch on error
         busRef?.current?.emit("getAgentSessions", { cwd }, (r) => {
@@ -166,6 +265,51 @@ export default function AgentHistoryModal({
     });
 
     setDeletingSession(null);
+  };
+
+  const handleConfirmBulkDelete = () => {
+    if (selectedKeys.size === 0) return;
+    vibrate();
+    setIsBulkDeleting(true);
+
+    const toDeleteRows = sessions.filter((s) => selectedKeys.has(`${s.agent}:${s.sessionId}`));
+    const keysToDelete = new Set(selectedKeys);
+
+    // Optimistically remove from store
+    const nextSessions = sessions.filter((s) => !keysToDelete.has(`${s.agent}:${s.sessionId}`));
+    useTerminalStore.getState().setAgentHistory(historyKey, nextSessions);
+    setGlobalRows((prev) => prev.filter((s) => !keysToDelete.has(`${s.agent}:${s.sessionId}`)));
+
+    // Emit deleteAgentSession for each selected session with timeout guard
+    const deletePromises = toDeleteRows.map(
+      (s) =>
+        new Promise((resolve) => {
+          const timer = setTimeout(() => resolve({ success: false, timeout: true }), 8000);
+          busRef?.current?.emit("deleteAgentSession", { agent: s.agent, sessionId: s.sessionId, cwd: s.cwd || cwd }, (res) => {
+            clearTimeout(timer);
+            resolve(res);
+          });
+        })
+    );
+
+    Promise.all(deletePromises)
+      .then((results) => {
+        const anyFailed = results.some((r) => !r?.success);
+        if (anyFailed) {
+          busRef?.current?.emit("getAgentSessions", { cwd }, (r) => {
+            if (Array.isArray(r?.sessions)) {
+              useTerminalStore.getState().setAgentHistory(historyKey, r.sessions);
+            }
+          });
+        }
+      })
+      .finally(() => {
+        setIsBulkDeleting(false);
+      });
+
+    setSelectedKeys(new Set());
+    setSelectMode(false);
+    setConfirmBulkDelete(false);
   };
 
   return (
@@ -184,13 +328,38 @@ export default function AgentHistoryModal({
               {sessions.length}
             </span>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-text-muted hover:text-text hover:bg-surface-2 rounded-brand transition-colors"
-            aria-label={t("common.close")}
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {sessions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  vibrate();
+                  if (selectMode || selectedKeys.size > 0) {
+                    setSelectedKeys(new Set());
+                    setSelectMode(false);
+                  } else {
+                    setSelectMode(true);
+                  }
+                }}
+                className={`px-2.5 py-1 text-xs font-medium rounded-brand transition-colors flex items-center gap-1.5 ${
+                  selectMode || selectedKeys.size > 0
+                    ? "bg-brand-500/15 text-brand-500 border border-brand-500/30"
+                    : "text-text-muted hover:text-text hover:bg-surface-2 border border-transparent"
+                }`}
+                title={selectMode || selectedKeys.size > 0 ? t("agentHistory.cancel") : t("agentHistory.selectMultiple")}
+              >
+                <ListChecks size={14} />
+                <span>{selectMode || selectedKeys.size > 0 ? t("agentHistory.cancel") : t("agentHistory.select")}</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 text-text-muted hover:text-text hover:bg-surface-2 rounded-brand transition-colors"
+              aria-label={t("common.close")}
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Search & Filters */}
@@ -252,6 +421,61 @@ export default function AgentHistoryModal({
           )}
         </div>
 
+        {/* Bulk action toolbar */}
+        {(selectMode || selectedKeys.size > 0) && (
+          <div className="px-4 py-2 bg-surface-2 border-b border-border-subtle flex items-center justify-between text-xs flex-shrink-0 animate-in fade-in duration-150">
+            <div className="flex items-center gap-2.5">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = isIndeterminate;
+                  }}
+                  onChange={handleToggleSelectAll}
+                  disabled={deletableFiltered.length === 0}
+                  className="w-4 h-4 accent-brand-500 rounded cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                />
+                <span className="text-text font-medium text-xs">
+                  {isAllSelected ? t("agentHistory.deselectAll") : t("agentHistory.selectAll")}
+                </span>
+              </label>
+              <span className="text-text-muted font-mono text-[11px]">
+                ({selectedKeys.size} {t("agentHistory.selected")})
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  vibrate();
+                  setSelectedKeys(new Set());
+                  setSelectMode(false);
+                }}
+                className="px-2.5 py-1 text-xs text-text-muted hover:text-text hover:bg-surface-3 rounded-brand transition-colors"
+              >
+                {t("agentHistory.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={selectedKeys.size === 0 || !connected || isBulkDeleting}
+                onClick={() => {
+                  vibrate();
+                  setConfirmBulkDelete(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1 bg-red-600 hover:bg-red-700 disabled:bg-surface-3 text-white disabled:text-text-muted/50 rounded-brand disabled:cursor-not-allowed transition-all font-medium text-xs active:scale-95 shadow-sm"
+              >
+                <Trash2 size={13} />
+                <span>
+                  {t("agentHistory.deleteSelected")}
+                  {selectedKeys.size > 0 ? ` (${selectedKeys.size})` : ""}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Sessions list — fixed height so result count never resizes the modal
             while typing; results swap inside the scroll area instead. */}
         <div className="h-[55vh] min-h-0 overflow-y-auto modal-scrollable p-2 space-y-1">
@@ -261,20 +485,63 @@ export default function AgentHistoryModal({
               <span>{query ? t("agentHistory.noResults") : t("agentHistory.empty")}</span>
             </div>
           ) : (
-            filtered.map((row) => {
+            filtered.map((row, index) => {
+              const rowKey = `${row.agent}:${row.sessionId}`;
               const openId = row.openSessionId && liveSessionIds?.has(row.openSessionId)
                 ? row.openSessionId
                 : null;
               const title = row.title || t("agentHistory.untitled");
               // Search hit from outside this list's store: no delete, show its path.
               const foreign = !!row.foreign;
+              const canDelete = !openId && !foreign;
+              const isSelected = selectedKeys.has(rowKey);
 
               return (
                 <div
-                  key={`${row.agent}:${row.sessionId}`}
-                  onClick={() => handleResume(row, openId)}
-                  className="group flex items-center gap-2.5 px-3 py-2 rounded-brand cursor-pointer transition-colors hover:bg-surface-2"
+                  key={rowKey}
+                  onClick={(e) => {
+                    if (selectMode || selectedKeys.size > 0) {
+                      if (canDelete) handleRowSelect(rowKey, index, e.shiftKey);
+                    } else {
+                      handleResume(row, openId);
+                    }
+                  }}
+                  className={`group flex items-center gap-2.5 px-3 py-2 rounded-brand cursor-pointer transition-colors ${
+                    isSelected
+                      ? "bg-brand-500/15 border border-brand-500/30 text-text"
+                      : "hover:bg-surface-2 border border-transparent"
+                  }`}
                 >
+                  {/* Checkbox column — fixed width prevents any layout shifts on hover */}
+                  <div
+                    className={`w-4 h-4 flex items-center justify-center flex-shrink-0 transition-opacity ${
+                      canDelete
+                        ? selectMode || selectedKeys.size > 0 || isSelected
+                          ? "opacity-100"
+                          : "opacity-0 group-hover:opacity-100"
+                        : selectMode || selectedKeys.size > 0
+                        ? "opacity-20 pointer-events-none"
+                        : "opacity-0 pointer-events-none"
+                    }`}
+                    onClick={(e) => {
+                      if (!canDelete) return;
+                      e.stopPropagation();
+                      handleRowSelect(rowKey, index, e.shiftKey);
+                    }}
+                  >
+                    {canDelete ? (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        readOnly
+                        tabIndex={-1}
+                        className="w-4 h-4 accent-brand-500 rounded cursor-pointer pointer-events-none"
+                      />
+                    ) : (
+                      <span className="w-3.5 h-3.5 rounded border border-border-subtle inline-block" />
+                    )}
+                  </div>
+
                   <img
                     src={agentIconUrl(row.agent)}
                     alt={row.agent}
@@ -282,7 +549,7 @@ export default function AgentHistoryModal({
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs truncate ${openId ? "text-text font-medium" : "text-text-muted"}`}>
+                      <span className={`text-xs truncate ${openId || isSelected ? "text-text font-medium" : "text-text-muted"}`}>
                         {title}
                       </span>
                       {openId && (
@@ -328,20 +595,22 @@ export default function AgentHistoryModal({
                   </div>
 
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeletingSession(row);
-                      }}
-                      disabled={!connected || !!openId || !!foreign}
-                      className={`p-1.5 text-text-muted hover:text-danger hover:bg-danger/10 rounded-brand transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 ${
-                        openId || foreign ? "invisible pointer-events-none" : ""
-                      }`}
-                      title={t("agentHistory.delete")}
-                      aria-label={t("agentHistory.delete")}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {!selectMode && selectedKeys.size === 0 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingSession(row);
+                        }}
+                        disabled={!connected || !!openId || !!foreign}
+                        className={`p-1.5 text-text-muted hover:text-danger hover:bg-danger/10 rounded-brand transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 ${
+                          openId || foreign ? "invisible pointer-events-none" : ""
+                        }`}
+                        title={t("agentHistory.delete")}
+                        aria-label={t("agentHistory.delete")}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -359,6 +628,23 @@ export default function AgentHistoryModal({
           message={t("agentHistory.deleteMessage", { title: deletingSession.title || t("agentHistory.untitled") })}
         />
       )}
+
+      {confirmBulkDelete && (() => {
+        const singleRow = selectedKeys.size === 1 ? sessions.find((s) => selectedKeys.has(`${s.agent}:${s.sessionId}`)) : null;
+        return (
+          <ConfirmDialog
+            isOpen={true}
+            onClose={() => setConfirmBulkDelete(false)}
+            onConfirm={handleConfirmBulkDelete}
+            title={selectedKeys.size === 1 ? t("agentHistory.deleteTitle") : t("agentHistory.deleteMultipleTitle", { n: selectedKeys.size })}
+            message={
+              selectedKeys.size === 1
+                ? t("agentHistory.deleteMessage", { title: singleRow?.title || t("agentHistory.untitled") })
+                : t("agentHistory.deleteMultipleMessage", { n: selectedKeys.size })
+            }
+          />
+        );
+      })()}
     </div>
   );
 }
