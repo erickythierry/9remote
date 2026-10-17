@@ -37,6 +37,12 @@ test("the typed launch line resolves to the launcher, built-ins stay built-in", 
   assert.equal(catalog.agentIdFromLaunchLine("claude"), "claude");
 });
 
+test("OSC title detection recognizes a custom label before its base agent", () => {
+  assert.equal(catalog.agentIdFromTitle("9R - Fix the login bug"), "claude+9r");
+  assert.equal(catalog.agentIdFromTitle("⠋ 9R: working"), "claude+9r");
+  assert.equal(catalog.agentIdFromTitle("Claude Code - task mentioning 9R"), "claude");
+});
+
 test("resume swaps the base binary for the launcher command", () => {
   assert.equal(catalog.agentById("claude+9r").resume("abc"), "9r --resume abc");
   assert.equal(catalog.agentById("claude+9r-ui").label, "9R");

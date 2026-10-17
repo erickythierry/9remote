@@ -196,7 +196,15 @@ export function agentIdFromTitle(title = "") {
   if (CLAUDE_EXCLUSIVE_PREFIX_RE.test(title)) return "claude";
   const t = title.trim();
   let earliest = null;
-  for (const { id, re } of AGENT_TOKEN_MATCHERS) {
+  const matchers = [...AGENT_TOKEN_MATCHERS];
+  for (const { id, label, cmd } of customAgentList()) {
+    for (const token of new Set([label, cmd.trim().split(/\s+/)[0].split("/").pop()])) {
+      if (!token) continue;
+      const re = new RegExp(`(?<![\\w./\\\\-])${token.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}(?![\\w./\\\\-])`, "i");
+      matchers.push({ id, re });
+    }
+  }
+  for (const { id, re } of matchers) {
     const match = re.exec(t);
     if (!match) continue;
     const index = match.index;
