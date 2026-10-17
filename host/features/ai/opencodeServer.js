@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomBytes } from "node:crypto";
 import spawn from "cross-spawn"; // Windows: npm-installed opencode is a .cmd shim a bare spawn cannot exec
 import { createLogger } from "../../lib/logger.js";
 import { PATHS } from "../../lib/constants.js";
@@ -23,16 +24,48 @@ let booting = null;
 // PID of an adopted server a previous 9remote agent spawned (marker file match):
 // retirable when idle, unlike one the user started by hand.
 let adoptedOurs = null;
+let serverPassword = process.env.OPENCODE_SERVER_PASSWORD || "";
+const serverUsername = process.env.OPENCODE_SERVER_USERNAME || "opencode";
 
 // Under NREMOTE_HOME, not os.tmpdir(): the OS purges temp files after a few days,
 // and a marker that vanished while its server lived on turned it into an orphan
 // nobody could adopt — 400MB held forever.
 const markerFile = () => path.join(PATHS.STATE, `opencode-serve-${OPENCODE_SERVER_PORT}.pid`);
 const clearMarker = () => { try { fs.unlinkSync(markerFile()); } catch {} };
-const markerMatches = async (pid) => {
-  if (!pid) return false;
-  try { return String(fs.readFileSync(markerFile(), "utf8")).trim() === String(pid); } catch { return false; }
-};
+function readMarker() {
+  try {
+    const text = fs.readFileSync(markerFile(), "utf8").trim();
+    try {
+      const marker = JSON.parse(text);
+      return { pid: String(marker.pid || ""), password: String(marker.password || "") };
+    } catch {
+      // Older 9remote releases stored only the pid.
+      return { pid: text, password: "" };
+    }
+  } catch {
+    return { pid: "", password: "" };
+  }
+}
+const markerMatches = async (pid) => Boolean(pid) && readMarker().pid === String(pid);
+function writeMarker(pid) {
+  try {
+    fs.mkdirSync(path.dirname(markerFile()), { recursive: true });
+    fs.writeFileSync(markerFile(), JSON.stringify({ pid: String(pid), password: serverPassword }), { mode: 0o600 });
+    fs.chmodSync(markerFile(), 0o600);
+  } catch {}
+}
+
+function authHeaders(headers = {}) {
+  if (!serverPassword) return headers;
+  return {
+    ...headers,
+    authorization: `Basic ${Buffer.from(`${serverUsername}:${serverPassword}`).toString("base64")}`
+  };
+}
+
+export function authenticatedFetch(url, init = {}) {
+  return fetch(url, { ...init, headers: authHeaders(init.headers || {}) });
+}
 
 function opencodeDataDir() {
   if (process.platform === "win32") {
@@ -71,7 +104,7 @@ async function syncCredentials(url) {
       try {
         await fetch(`${url}/api/integration/${id}/connect/key`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: authHeaders({ "content-type": "application/json" }),
           body: JSON.stringify({ key: entry.key }),
           signal: AbortSignal.timeout(3000)
         });
@@ -85,7 +118,7 @@ async function syncCredentials(url) {
 async function waitForPort(url, deadline) {
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${url}/api/session`, { signal: AbortSignal.timeout(2000) });
+      const res = await fetch(`${url}/api/session`, { headers: authHeaders(), signal: AbortSignal.timeout(2000) });
       // Another HTTP process on the port answers HTML — not our server.
       if (res.ok && (res.headers.get("content-type") || "").includes("application/json")) return true;
     } catch {}
@@ -127,6 +160,10 @@ export async function ensureServer() {
   booting = (async () => {
     const port = serverPort();
     const url = `http://127.0.0.1:${port}`;
+    // Recover credentials for a server left by a previous 9remote process before
+    // probing it; the marker is private (0600) and scoped to our exact port.
+    const previous = readMarker();
+    if (!serverPassword && previous.password) serverPassword = previous.password;
 
     // Adopt running server if already answering on port.
     if (await waitForPort(url, Date.now() + 1000)) {
@@ -138,7 +175,9 @@ export async function ensureServer() {
       const holder = await portHolder(port);
       if ((await markerMatches(holder)) || (await isOurServer(holder))) {
         adoptedOurs = Number(holder);
-        try { fs.writeFileSync(markerFile(), String(holder)); } catch {}
+        const marker = readMarker();
+        if (marker.password) serverPassword = marker.password;
+        writeMarker(holder);
         // No session retained it in THIS run — without arming here an adopted
         // leftover outlives the agent forever (nobody opens a chat to release it).
         armIdleStop();
@@ -153,8 +192,15 @@ export async function ensureServer() {
     for (let attempt = 0; attempt < 2; attempt++) {
       lastFail = "";
       stderrTail = "";
+      const env = buildOpencodeEnv();
+      // OpenCode v2 protects `serve` with a generated password even when the
+      // caller did not configure one. Supply our own so API requests and later
+      // adoption can authenticate reliably.
+      serverPassword = env.OPENCODE_SERVER_PASSWORD || randomBytes(32).toString("base64url");
+      env.OPENCODE_SERVER_PASSWORD = serverPassword;
+      env.OPENCODE_SERVER_USERNAME = env.OPENCODE_SERVER_USERNAME || serverUsername;
       proc = spawn("opencode", ["serve", "--port", String(port), "--hostname", "127.0.0.1"], {
-        env: buildOpencodeEnv(),
+        env,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true
       });
@@ -179,7 +225,7 @@ export async function ensureServer() {
       if (await waitForPort(url, Date.now() + BOOT_TIMEOUT_MS)) {
         base = url;
         // Ownership marker: a later agent adopts this server knowing it is ours.
-        try { fs.writeFileSync(markerFile(), String(proc.pid)); } catch {}
+        writeMarker(proc.pid);
         // A caller with no chat session (e.g. the model catalog) must not leave
         // the spawn alive forever; armIdleStop no-ops when a session retained it.
         armIdleStop();
@@ -253,9 +299,9 @@ export function releaseForSession() {
 
 async function api(method, path, body, { timeoutMs = 30000 } = {}) {
   const url = await ensureServer();
-  const res = await fetch(`${url}${path}`, {
+  const res = await authenticatedFetch(`${url}${path}`, {
     method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    headers: body === undefined ? {} : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs)
   });
@@ -355,7 +401,7 @@ export const rejectQuestion = (requestId, directory) =>
 
 export async function interruptSession(sessionId) {
   const url = await ensureServer();
-  const res = await fetch(`${url}/api/session/${sessionId}/interrupt`, { method: "POST", signal: AbortSignal.timeout(10000) });
+  const res = await authenticatedFetch(`${url}/api/session/${sessionId}/interrupt`, { method: "POST", signal: AbortSignal.timeout(10000) });
   if ((res.headers.get("content-type") || "").includes("text/html")) {
     throw new Error(`opencode interrupt unavailable (HTML answer — route missing on this server)`);
   }
@@ -374,7 +420,7 @@ export function subscribeBus(onEvent, { onReconnect = null } = {}) {
     while (!closed) {
       try {
         const url = await ensureServer();
-        const res = await fetch(`${url}/api/event`, { headers: { accept: "text/event-stream" }, signal: abort.signal });
+        const res = await authenticatedFetch(`${url}/api/event`, { headers: { accept: "text/event-stream" }, signal: abort.signal });
         if (!res.ok || !res.body) throw new Error(`event stream HTTP ${res.status}`);
         if (onReconnect) { try { onReconnect(); } catch {} }
         const reader = res.body.getReader();
@@ -427,6 +473,7 @@ export const deleteSession = (sessionId) =>
 // Test hook: point api() at a fake server instead of spawning opencode.
 export function _useTestBase(url) {
   base = url;
+  if (url) serverPassword = "";
   // ensureServer short-circuits on a live proc; fake one while overridden.
   proc = url ? { exitCode: null } : null;
   booting = null;

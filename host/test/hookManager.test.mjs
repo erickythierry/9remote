@@ -81,10 +81,11 @@ await test("codex writes handlers into hooks.json, not the legacy notify slot", 
   assert.equal(after, undefined, "hooks removed on disable");
 });
 
-await test("opencode writes JS plugin with chat.message→working, session.idle→done", () => {
+await test("opencode writes v2 JS plugin with event notifications", () => {
   m.enableToolHook("opencode");
   const plugin = fs.readFileSync(path.join(TMP, ".config", "opencode", "plugin", "nineRemoteNotify.js"), "utf8");
-  assert.ok(plugin.includes('"chat.message"'));
+  assert.ok(plugin.includes('id: "9remote-notify"'));
+  assert.ok(plugin.includes("ctx.event.subscribe"));
   assert.match(plugin, /post\("working"[,)]/);
   assert.match(plugin, /post\("done"[,)]/);
   assert.match(plugin, /post\("blocked"[,)]/, "permission.asked→blocked");

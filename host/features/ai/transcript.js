@@ -344,6 +344,17 @@ export function recoverFromAntigravityTranscript(cwd, sessionId) {
   const events = [];
   const pending = [];
   let seq = 1;
+  const stats = {
+    inputTokens: 0,
+    outputTokens: 0,
+    thinkingTokens: 0,
+    cachedTokens: 0,
+    sessionInputTokens: 0,
+    sessionCachedTokens: 0,
+    sessionOutputTokens: 0,
+    contextTokens: 0,
+    contextWindow: 1048576
+  };
   for (const line of lines) {
     if (!line.trim()) continue;
     let rec;
@@ -357,6 +368,24 @@ export function recoverFromAntigravityTranscript(cwd, sessionId) {
       continue;
     }
     if (rec.type !== "PLANNER_RESPONSE" && rec.type !== "GENERIC") continue;
+
+    if (rec.type === "PLANNER_RESPONSE") {
+      const uncached = rec.input_tokens || 0;
+      const cached = rec.cache_read_tokens || 0;
+      const output = rec.output_tokens || 0;
+      const thinking = rec.thinking_tokens || 0;
+      const totalInput = uncached + cached;
+      if (uncached || cached || output) {
+        stats.inputTokens += uncached;
+        stats.cachedTokens += cached;
+        stats.outputTokens += output;
+        stats.thinkingTokens += thinking;
+        stats.sessionInputTokens += totalInput;
+        stats.sessionCachedTokens += cached;
+        stats.sessionOutputTokens += output;
+        stats.contextTokens = totalInput;
+      }
+    }
 
     if (rec.thinking?.trim()) events.push({ seq: seq++, event: "thinking", data: { text: rec.thinking } });
 
@@ -377,7 +406,7 @@ export function recoverFromAntigravityTranscript(cwd, sessionId) {
     }
     if (rec.content?.trim()) {
       events.push({ seq: seq++, event: "delta", data: { text: rec.content } });
-      events.push({ seq: seq++, event: "turn_complete", data: { stats: {} } });
+      events.push({ seq: seq++, event: "turn_complete", data: { stats: { ...stats } } });
     }
   }
 

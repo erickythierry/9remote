@@ -499,7 +499,7 @@ function buildCodexGroup(type) {
 
 // ─── Kind: js-plugin-opencode — JS plugin emitting per-event fetch ──────────
 function buildOpencodePlugin() {
-  return `// 9Remote OpenCode status plugin (auto-generated)
+  return `// 9Remote OpenCode status plugin (auto-generated, OpenCode v2)
 const base = ${JSON.stringify(NOTIFY_URL)};
 const post = (type, conv) => {
   const sid = process.env.NINE_REMOTE_SESSION_ID || "";
@@ -508,19 +508,24 @@ const post = (type, conv) => {
   if (conv) url += "&sessionID=" + encodeURIComponent(conv);
   try { fetch(url, { signal: AbortSignal.timeout(2000) }).catch(() => {}); } catch {}
 };
-export const ${OPENCODE_PLUGIN_MARK} = async () => ({
-  "chat.message": async (input) => post("working", input?.message?.sessionID),
-  "tool.execute.before": async (input) => post("working", input?.sessionID),
-  "tool.execute.after": async (input) => post("working", input?.sessionID),
-  event: async ({ event }) => {
-    const t = event?.type;
-    if (!t) return;
-    const conv = event?.properties?.sessionID || event?.properties?.info?.sessionID;
-    if (t === "session.idle") return post("done", conv);
-    if (t === "permission.asked" || t === "question.asked" || t === "session.error") return post("blocked", conv);
-    if (t === "session.compacted" || t === "permission.replied" || t === "question.replied") return post("working", conv);
+export default {
+  id: "9remote-notify",
+  async setup(ctx) {
+    const controller = new AbortController();
+    void (async () => {
+      for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+        const t = event?.type;
+        if (!t) continue;
+        const props = event.properties || {};
+        const conv = props.sessionID || props.sessionId || props.info?.sessionID || props.info?.id;
+        if (t === "session.idle") post("done", conv);
+        else if (t === "permission.asked" || t === "question.asked" || t === "session.error") post("blocked", conv);
+        else if (t === "session.compacted" || t === "permission.replied" || t === "question.replied" || t === "message.updated") post("working", conv);
+      }
+    })().catch(() => {});
+    return () => controller.abort();
   },
-});
+};
 `;
 }
 const opencodeHook = {
@@ -540,7 +545,8 @@ const opencodeHook = {
   // otherwise the UI never re-runs enable() and the id never starts arriving.
   isEnabled() {
     const filePath = PATHS.opencode();
-    return fs.existsSync(filePath) && fs.readFileSync(filePath, "utf8").includes("&sessionID=");
+    const source = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+    return source.includes("id: \"9remote-notify\"") && source.includes("ctx.event.subscribe");
   },
 };
 

@@ -12,8 +12,14 @@ const test = (name, fn) => {
 };
 
 await test("an engine with no config file resolves to empty, never a canned id", () => {
-  assert.equal(resolveDefaultModel("antigravity"), "");
-  assert.equal(resolveDefaultModel("nope"), "");
+  const orig = readAiPreferences().antigravity;
+  try {
+    saveAiPreference("antigravity", { model: "", effort: "" });
+    assert.equal(resolveDefaultModel("antigravity"), "");
+    assert.equal(resolveDefaultModel("nope"), "");
+  } finally {
+    if (orig) saveAiPreference("antigravity", orig);
+  }
 });
 
 // The point of the lookup: whatever comes back must be a real id the CLI accepts,
@@ -42,7 +48,8 @@ await test("opencode default is a provider/model id from its own catalog", () =>
 
 await test("opencode catalog is a list of unique provider/model ids", () => {
   const options = listOpencodeModelOptions();
-  for (const o of options) assert.match(o.id, /^[\w.-]+\/[\w.-]+$/);
+  // OpenCode model ids can contain multiple slashes (provider namespace/model).
+  for (const o of options) assert.match(o.id, /^[\w.-]+\/(?:[\w.-]+\/)*[^\s/]+$/);
   assert.equal(new Set(options.map((o) => o.id)).size, options.length);
 });
 

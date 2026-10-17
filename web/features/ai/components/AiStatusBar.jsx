@@ -38,7 +38,7 @@ export const AiStatusBar = memo(function AiStatusBar({
   const catalogWindow = metadata?.modelOptions?.find((m) => m.id === metadata?.model)?.contextWindow || 0;
   const context = contextLabel(stats, catalogWindow);
   const usage = usageLabel(stats);
-  // Wide screens always show the totals; a phone has no room, so a tap on the context readout opens them.
+  // Wide screens always show the totals; a phone has no room, so a tap on the readout opens a popover with them.
   const [usageOpen, setUsageOpen] = useState(false);
   const modes = getEngineConfig(engine).permissionModes || [];
   // Before the host answers, the engine's own default is the truth — not "default",
@@ -52,10 +52,12 @@ export const AiStatusBar = memo(function AiStatusBar({
 
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const modeMenuRef = useRef(null);
+  const usageRef = useRef(null);
 
   useEffect(() => {
     const onClick = (e) => {
       if (modeMenuRef.current && !modeMenuRef.current.contains(e.target)) setModeMenuOpen(false);
+      if (usageRef.current && !usageRef.current.contains(e.target)) setUsageOpen(false);
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
@@ -140,20 +142,28 @@ export const AiStatusBar = memo(function AiStatusBar({
       {/* Right: context window, branch (non-default only), New chat */}
       <div className="flex items-center gap-2.5 shrink-0">
         {usage && (
-          <span className={`${usageOpen ? "flex" : "hidden sm:flex"} items-center whitespace-nowrap`} title="Tokens sent and received in this chat">
+          <span className="hidden sm:flex items-center whitespace-nowrap" title="Tokens sent and received in this chat">
             {usage}
           </span>
         )}
-        {context && (
-          <button
-            type="button"
-            onClick={() => { vibrate(); setUsageOpen((v) => !v); }}
-            className={`flex items-center gap-1 whitespace-nowrap ${context.percent >= 95 ? "text-danger" : context.percent >= 80 ? "text-warning" : ""}`}
-            title="Context window used"
-          >
-            <LayoutDashboard size={11} className="text-accent shrink-0" />
-            <span>{context.text}</span>
-          </button>
+        {(context || usage) && (
+          <div ref={usageRef} className="relative">
+            <button
+              type="button"
+              onClick={() => { vibrate(); setUsageOpen((v) => !v); }}
+              className={`flex items-center gap-1 whitespace-nowrap ${context?.percent >= 95 ? "text-danger" : context?.percent >= 80 ? "text-warning" : ""}`}
+              title="Context window used"
+            >
+              <LayoutDashboard size={11} className="text-accent shrink-0" />
+              {context && <span>{context.text}</span>}
+            </button>
+            {usageOpen && (
+              <div className="sm:hidden absolute right-0 bottom-[calc(100%+6px)] bg-surface border border-border-subtle rounded-brand shadow-xl p-2 z-50 flex flex-col gap-1 whitespace-nowrap">
+                {context && <span>Context: {context.text}</span>}
+                {usage && <span>{usage}</span>}
+              </div>
+            )}
+          </div>
         )}
         {branch && !isDefaultBranch(branch) && (
           <BranchBadge

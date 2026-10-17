@@ -25,9 +25,9 @@ const logsDir = path.join(root, "brain", sessionId, ".system_generated", "logs")
 fs.mkdirSync(logsDir, { recursive: true });
 fs.writeFileSync(path.join(logsDir, "transcript.jsonl"), [
   { step_index: 0, source: "USER_EXPLICIT", type: "USER_INPUT", status: "DONE", content: "<USER_REQUEST>\nlist the files\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: now.\n</ADDITIONAL_METADATA>" },
-  { step_index: 1, source: "MODEL", type: "PLANNER_RESPONSE", status: "DONE", thinking: "**Checking**\n\nNeed to list.", tool_calls: [{ name: "run_command", args: { CommandLine: "\"ls -la\"", Cwd: "\"/tmp\"" } }] },
+  { step_index: 1, source: "MODEL", type: "PLANNER_RESPONSE", status: "DONE", input_tokens: 1000, cache_read_tokens: 4000, output_tokens: 150, thinking: "**Checking**\n\nNeed to list.", tool_calls: [{ name: "run_command", args: { CommandLine: "\"ls -la\"", Cwd: "\"/tmp\"" } }] },
   { step_index: 2, source: "MODEL", type: "GENERIC", status: "DONE", content: "The command exited with code 0.\nOutput:\nfile.txt\n" },
-  { step_index: 3, source: "MODEL", type: "PLANNER_RESPONSE", status: "DONE", content: "There is one file." }
+  { step_index: 3, source: "MODEL", type: "PLANNER_RESPONSE", status: "DONE", input_tokens: 200, cache_read_tokens: 5000, output_tokens: 50, content: "There is one file." }
 ].map((r) => JSON.stringify(r)).join("\n"));
 
 const events = recoverFromAntigravityTranscript("/tmp", sessionId);
@@ -49,8 +49,13 @@ test("thinking, the tool call and its result all replay", () => {
   assert.match(result.data.output, /file\.txt/);
 });
 
-test("every conversation ends with a turn_complete so the pane stops spinning", () => {
-  assert.equal(events[events.length - 1].event, "turn_complete");
+test("every conversation ends with a turn_complete carrying recovered stats so the pane stops spinning", () => {
+  const last = events[events.length - 1];
+  assert.equal(last.event, "turn_complete");
+  assert.equal(last.data.stats.sessionInputTokens, 5000 + 5200);
+  assert.equal(last.data.stats.sessionCachedTokens, 4000 + 5000);
+  assert.equal(last.data.stats.sessionOutputTokens, 150 + 50);
+  assert.equal(last.data.stats.contextTokens, 5200);
 });
 
 test("an unknown id yields null rather than throwing", () => {

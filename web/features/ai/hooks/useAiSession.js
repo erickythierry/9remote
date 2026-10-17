@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { unstable_batchedUpdates } from "react-dom";
-import { useAiStore } from "@/shared/stores/aiStore";
+import { useAiStore, mergeStats } from "@/shared/stores/aiStore";
 import { useConnectionStore } from "@/shared/stores/connectionStore";
 import { useNotificationStore } from "@/shared/stores/notificationStore";
 import { useFleetStore } from "@/shared/stores/fleetStore";
@@ -813,7 +813,7 @@ export function useAiSession({
             },
             // The host's counters outrank the replay's: the log holds events, not the
             // adapter's running usage, so a reload would otherwise blank the context row.
-            stats: { ...hydrated.stats, ...(res.session.stats || {}) },
+            stats: mergeStats(hydrated.stats, res.session.stats),
             isTurnRunning: res.session.isTurnRunning !== undefined ? Boolean(res.session.isTurnRunning) : hydrated.isTurnRunning,
             // How long that turn has been running, on the host's clock — the pane anchors
             // its own to it, so a reload mid-turn counts the whole turn, not from the F5.

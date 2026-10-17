@@ -196,14 +196,17 @@ export function listCodexModelOptions() {
   return result;
 }
 
-// List OpenCode models and supported reasoning variants via `opencode models --verbose`.
+// List OpenCode models and supported reasoning variants. OpenCode v2 removed the
+// `--verbose` flag and prints a plain provider/model catalog; older versions still
+// expose variants as JSON after each id. Keep both formats so the chat UI does not
+// silently collapse to the serve API's (sometimes project-scoped) model list.
 export function listOpencodeModelOptions() {
   let out = "";
   try {
     const res = spawnSync("opencode", ["models", "--verbose"], { encoding: "utf8", timeout: OPENCODE_CATALOG_TIMEOUT_MS });
     if (!res.error && res.status === 0) out = res.stdout || "";
   } catch {
-    return [];
+    // Try the current CLI format below.
   }
 
   const options = [];
@@ -234,6 +237,25 @@ export function listOpencodeModelOptions() {
       // 'default' is an OpenCode marker, not a reasoning level; fallback to medium.
       defaultEffort: raw.medium ? "medium" : Object.keys(raw).find((k) => k !== "default") || ""
     });
+  }
+
+  // OpenCode v2 `models` prints one full model id per line, grouped under
+  // provider headings on a TTY. In non-interactive mode (our spawnSync) these
+  // are plain ids; accept any non-whitespace suffix so variants like [1m] and
+  // (high) survive as part of the model id.
+  if (options.length) return options;
+  try {
+    const res = spawnSync("opencode", ["models"], { encoding: "utf8", timeout: OPENCODE_CATALOG_TIMEOUT_MS });
+    if (!res.error && res.status === 0) out = res.stdout || "";
+  } catch {
+    return [];
+  }
+  const seen = new Set();
+  for (const line of out.split("\n")) {
+    const id = line.trim();
+    if (!/^[\w.-]+\/[^\s/][^\s]*$/.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    options.push({ id, label: id, short: id, efforts: [], defaultEffort: "" });
   }
   return options;
 }
@@ -399,7 +421,8 @@ export async function listOpencodeModelOptionsFromServer() {
   try {
     const { ensureServer } = await import("./opencodeServer.js");
     const base = await ensureServer();
-    const res = await fetch(`${base}/api/model`, { signal: AbortSignal.timeout(10000) });
+    const { authenticatedFetch } = await import("./opencodeServer.js");
+    const res = await authenticatedFetch(`${base}/api/model`, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return [];
     const body = await res.json();
     const models = Array.isArray(body?.data) ? body.data : [];
@@ -440,13 +463,15 @@ export function listAntigravityModelOptions() {
       const [id, ...rest] = line.split("\t");
       const cleanId = (id || "").trim();
       const label = rest.join(" ").trim() || cleanId;
+      const contextWindow = /claude/i.test(cleanId) ? 200000 : /gpt|oss/i.test(cleanId) ? 128000 : 1048576;
       return {
         id: cleanId,
         label,
         short: label,
         desc: "",
         efforts: [],
-        defaultEffort: ""
+        defaultEffort: "",
+        contextWindow
       };
     })
     .filter((m) => Boolean(m.id));

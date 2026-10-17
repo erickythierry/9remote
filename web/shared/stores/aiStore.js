@@ -90,6 +90,16 @@ function settleAllRunningRows(messages = []) {
 const resultChanges = (existing, data) =>
   existing.status !== (data.status || "done") || Object.keys(data).some((k) => existing[k] !== data[k]);
 
+// A rebuilt host adapter reports zeroed counters; they must not wipe usage already known.
+export const mergeStats = (base, next) => {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(next || {})) {
+    if (v === 0 && out[k] > 0) continue;
+    out[k] = v;
+  }
+  return out;
+};
+
 export const useAiStore = create(
   persist(
     (set, get) => ({
@@ -275,7 +285,7 @@ export const useAiStore = create(
           return {
             bySession: {
               ...state.bySession,
-              [sessionId]: { ...curr, stats: { ...curr.stats, ...stats } }
+              [sessionId]: { ...curr, stats: mergeStats(curr.stats, stats) }
             }
           };
         });
@@ -637,7 +647,7 @@ export const useAiStore = create(
                   // turnStartedAt kept: the summary line needs the mark; a new turn overwrites it.
                   lastTurnMs: turnMs || (curr.turnStartedAt ? Date.now() - curr.turnStartedAt : curr.lastTurnMs),
                   activePermission: null,
-                  stats: stats ? { ...curr.stats, ...stats } : curr.stats
+                  stats: stats ? mergeStats(curr.stats, stats) : curr.stats
                 }),
                 messages
               }
@@ -683,7 +693,7 @@ export const useAiStore = create(
                 lastTurnMs: 0,
                 activePermission: null,
                 activeBlocked: null,
-                stats: { inputTokens: 0, outputTokens: 0, totalTurns: 0, totalCost: 0, reasoningTokens: 0 },
+                // stats kept: the replay after a reset carries `stats: {}`, and the host adapter's counters survive /clear too.
                 turnBaseline: { inputTokens: 0, outputTokens: 0 }
               }
             }
@@ -756,7 +766,7 @@ export const useAiStore = create(
                   ? { inputTokens: 0, outputTokens: 0 }
                   : { inputTokens: stats?.inputTokens || 0, outputTokens: stats?.outputTokens || 0 },
                 metadata: { ...curr.metadata, ...metadata },
-                stats: stats ? { ...curr.stats, ...stats } : curr.stats,
+                stats: stats ? mergeStats(curr.stats, stats) : curr.stats,
                 // A blocked card with no matching replay event is stale.
                 activeBlocked,
                 ...(permissionMode ? { permissionMode } : {}),

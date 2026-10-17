@@ -161,7 +161,8 @@ export class AntigravityAdapter {
     this.effort = "";
     this.permissionMode = "accept-edits";
     this.flags = [];
-    this.stats = { inputTokens: 0, outputTokens: 0, thinkingTokens: 0, cachedTokens: 0, totalTurns: 0 };
+    const defaultWindow = /claude/i.test(this.currentModel) ? 200000 : /gpt|oss/i.test(this.currentModel) ? 128000 : 1048576;
+    this.stats = { inputTokens: 0, outputTokens: 0, thinkingTokens: 0, cachedTokens: 0, totalTurns: 0, contextWindow: defaultWindow };
     // Empty model means CLI default; sessionId persists the resumable conversation id.
     this.metadata = {
       model: this.currentModel,
@@ -176,6 +177,7 @@ export class AntigravityAdapter {
       const cleanModel = String(model).split("\t")[0].trim();
       this.currentModel = cleanModel;
       this.metadata.model = cleanModel;
+      this.stats.contextWindow = /claude/i.test(cleanModel) ? 200000 : /gpt|oss/i.test(cleanModel) ? 128000 : 1048576;
       if (TIER_SUFFIX_RE.test(cleanModel)) this.effort = "";
     }
     if (EFFORT_LEVELS.includes(effort)) {
@@ -534,14 +536,27 @@ export class AntigravityAdapter {
   }
 
   addUsage(usage) {
-    this.stats.inputTokens += usage.input_tokens || 0;
-    this.stats.outputTokens += usage.output_tokens || 0;
-    this.stats.thinkingTokens += usage.thinking_tokens || 0;
-    this.stats.cachedTokens += usage.cache_read_tokens || 0;
-    addSessionUsage(this.stats, { input: usage.input_tokens || 0, cached: usage.cache_read_tokens || 0, output: usage.output_tokens || 0 });
+    if (!usage) return;
+    const cached = usage.cache_read_tokens || usage.cacheReadTokens || usage.cached_tokens || usage.cachedTokens || 0;
+    const uncachedInput = usage.input_tokens || usage.inputTokens || 0;
+    const totalInput = uncachedInput + cached;
+    const output = usage.output_tokens || usage.outputTokens || 0;
+    const thinking = usage.thinking_tokens || usage.thinkingTokens || 0;
+
+    this.stats.inputTokens += uncachedInput;
+    this.stats.outputTokens += output;
+    this.stats.thinkingTokens += thinking;
+    this.stats.cachedTokens += cached;
+    this.stats.cacheReadInputTokens = (this.stats.cacheReadInputTokens || 0) + cached;
+
+    addSessionUsage(this.stats, {
+      input: totalInput,
+      cached,
+      output
+    });
     // The sum above bills every step; each step resends the growing conversation, so
-    // the LAST step's input is what the window currently holds.
-    this.stats.contextTokens = usage.input_tokens || 0;
+    // the LAST step's total input (prompt + cache) is what the window currently holds.
+    this.stats.contextTokens = totalInput;
   }
 
   // Interrupt current turn by stopping process.

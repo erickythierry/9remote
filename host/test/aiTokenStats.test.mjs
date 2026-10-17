@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { ClaudeAdapter } from "../features/ai/adapters/claudeAdapter.js";
 import { CodexAdapter } from "../features/ai/adapters/codexAdapter.js";
 import { OpenCodeAdapter } from "../features/ai/adapters/opencodeAdapter.js";
+import { AntigravityAdapter } from "../features/ai/adapters/antigravityAdapter.js";
 
 let pass = 0, fail = 0;
 const test = (name, fn) => {
@@ -135,6 +136,38 @@ await test("claude totals the session: input counts the cache it resent, cached 
   assert.equal(adapter.stats.sessionCachedTokens, 800 + 990);
   assert.equal(adapter.stats.sessionOutputTokens, 70);
   assert.equal(adapter.stats.inputTokens, 10, "the per-turn field keeps its meaning");
+});
+
+await test("antigravity totals the session: input counts prompt + cache, cached is the read share", () => {
+  const adapter = new AntigravityAdapter({ cwd: "/tmp", onEvent: () => {} });
+  // Step 1: 13826 uncached, 0 cached, 349 output
+  adapter.addUsage({ input_tokens: 13826, cache_read_tokens: 0, output_tokens: 349 });
+  // Step 2: 2933 uncached, 16772 cached, 217 output
+  adapter.addUsage({ input_tokens: 2933, cache_read_tokens: 16772, output_tokens: 217 });
+
+  // sessionInputTokens is sum of totalInput (13826 + 19705 = 33531)
+  assert.equal(adapter.stats.sessionInputTokens, 13826 + (2933 + 16772));
+  // sessionCachedTokens is sum of cache_read_tokens
+  assert.equal(adapter.stats.sessionCachedTokens, 16772);
+  assert.equal(adapter.stats.sessionOutputTokens, 349 + 217);
+  // Context tokens reflects the LAST step's total input (prompt + cache)
+  assert.equal(adapter.stats.contextTokens, 2933 + 16772);
+  // Context window defaults to 1M tokens for Gemini
+  assert.equal(adapter.stats.contextWindow, 1048576);
+  // Cache ratio is not clamped at 100%
+  const cacheRatio = adapter.stats.sessionCachedTokens / adapter.stats.sessionInputTokens;
+  assert.ok(cacheRatio < 1 && cacheRatio > 0.4);
+});
+
+await test("antigravity contextWindow tracks model selection", () => {
+  const adapter = new AntigravityAdapter({ cwd: "/tmp", onEvent: () => {}, model: "gemini-3.8-flash-high" });
+  assert.equal(adapter.stats.contextWindow, 1048576);
+
+  adapter.setOptions({ model: "claude-sonnet-4-6" });
+  assert.equal(adapter.stats.contextWindow, 200000);
+
+  adapter.setOptions({ model: "gpt-oss-120b-medium" });
+  assert.equal(adapter.stats.contextWindow, 128000);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
