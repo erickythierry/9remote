@@ -210,7 +210,6 @@ export default {
     placeholder: "Tên terminal (tùy chọn)",
     newButton: "+ Tạo mới",
     empty: "Không có session nào",
-    markAllRead: "Mark all as read",
     emptyHint: "Tạo session mới để bắt đầu",
     created: "Tạo lúc {time}",
     deleteTitle: "Xóa Session",
@@ -585,6 +584,7 @@ export default {
     empty: "Không có thông báo",
     needsInput: "cần nhập liệu",
     badgeTitle: "{blocked} needs input, {done} your turn",
+    markAllRead: "Mark all as read",
     replied: "đã trả lời",
     agent: "Agent"
   },

@@ -302,7 +302,6 @@ export default {
     placeholder: "Terminal name (optional)",
     newButton: "+ New",
     empty: "No active sessions",
-    markAllRead: "Mark all as read",
     emptyHint: "Create a new session to get started",
     created: "Created {time}",
     deleteTitle: "Delete Session",
@@ -979,6 +978,7 @@ export default {
     empty: "No notifications",
     needsInput: "needs input",
     badgeTitle: "{blocked} needs input, {done} your turn",
+    markAllRead: "Mark all as read",
     replied: "replied",
     agent: "Agent"
   },
