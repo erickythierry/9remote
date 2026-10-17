@@ -10,6 +10,7 @@ import { RIGHT_PANEL_WIDTH } from "../constants/terminalConfig";
 import { useWorkspaceRepos } from "../hooks/useWorkspaceRepos";
 import { useWorkspaceRoots } from "../hooks/useWorkspaceRoots";
 import { useWorkspaceGit } from "../hooks/useWorkspaceGit";
+import { useWorkspaceChangedCount } from "../hooks/useWorkspaceChangedCount";
 import { GIT_REFRESH_EVENT } from "@/features/fileExplorer/constants/fileExplorer.js";
 import { useFileBusStore } from "@/shared/stores/fileBusStore";
 import ConfirmDialog from "@/shared/components/ui/ConfirmDialog";
@@ -38,6 +39,8 @@ function TerminalRightPanel({
   // A persisted "trees" tab must not strand the panel on hidden content
   const activeTab = tab === "trees" ? "git" : tab;
   const { repos, refresh: refreshRepos, scanning, deep, scanDeeper } = useWorkspaceRepos(workspacePath, activeFileBus);
+  // Polled while the tab is visible; without it the badge freezes at the scan-time count.
+  const { perRepo: livePerRepo } = useWorkspaceChangedCount(workspacePath, activeFileBus);
   // The files tab may be revealed at a pane's live cwd; the other tabs stay workspace-rooted
   const effectiveFilesRoot = filesRoot || workspacePath;
   const { roots, refresh: refreshRoots } = useWorkspaceRoots(effectiveFilesRoot, activeFileBus);
@@ -75,7 +78,7 @@ function TerminalRightPanel({
   const hiddenSet = new Set(hiddenRepos);
   // The live per-repo counts win over the ones baked into the scan result: the scan is
   // refreshed by hand, the counts are polled, and the pane badge reads the same numbers.
-  const countOf = (repo) => changedPerRepo[repo.path] ?? repo.changedCount ?? 0;
+  const countOf = (repo) => changedPerRepo[repo.path] ?? livePerRepo[repo.path] ?? repo.changedCount ?? 0;
   const isMainRepo = (repo) => !repo.relPath || repo.path === workspacePath;
   const visibleRepos = repos.filter((r) => !hiddenSet.has(r.path));
   const dirtyRepos = visibleRepos.filter((r) => countOf(r) > 0);
