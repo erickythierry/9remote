@@ -6,6 +6,7 @@ import { stageAttachment } from "../aiAttachment.js";
 import { LocalProc } from "../proc/localProc.js";
 import { decodeLine } from "../proc/daemonProc.js";
 import { claudeBin } from "../constants.js";
+import { splitCommand } from "../../terminal/customAgents.js";
 
 // A rewind of a long session is not instant; timeout is opt-in — see JsonRpcClient.request.
 const REWIND_CONTROL_TIMEOUT_MS = 60000;
@@ -74,10 +75,12 @@ export function buildEditDiff(name, input = {}) {
 }
 
 export class ClaudeAdapter {
-  constructor({ cwd, onEvent, proc = null, hostSessionId = null }) {
+  constructor({ cwd, onEvent, proc = null, hostSessionId = null, launcher = "" }) {
     this.cwd = cwd || process.cwd();
     this.onEvent = onEvent;
     this.hostSessionId = hostSessionId;
+    // A custom launcher (e.g. a wrapper script) replaces the bare `claude` binary.
+    this.launcher = launcher;
     this.proc = proc || new LocalProc();
     this.isTurnRunning = false;
     this.currentMode = "default";
@@ -103,7 +106,8 @@ export class ClaudeAdapter {
   async start(mode = "default", resumeSessionId = null) {
     this._reset(mode);
     // keepStdin: every later turn and answer rides this same pipe — closing it ends the conversation at birth.
-    return await this.proc.start({ bin: claudeBin(), args: this._args(mode, resumeSessionId), cwd: this.cwd, env: getExtendedEnv({ hostSessionId: this.hostSessionId }), keepStdin: true });
+    const { bin, args } = this.launcher ? splitCommand(this.launcher) : { bin: claudeBin(), args: [] };
+    return await this.proc.start({ bin, args: [...args, ...this._args(mode, resumeSessionId)], cwd: this.cwd, env: getExtendedEnv({ hostSessionId: this.hostSessionId }), keepStdin: true });
   }
 
   /** Re-attach to the daemon's process from a line offset; `alive:false` means nothing to adopt. */

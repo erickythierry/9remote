@@ -8,9 +8,13 @@ export const AGENT_ICON_BASE = "/agent-icons";
 // site instead of being baked into each file.
 export const AGENT_ICON_CLS = "rounded-[3px] pointer-events-none select-none";
 
+// A custom launcher id is "<base>+<slug>"; it borrows its base agent's icon and behaviour.
+export const CUSTOM_AGENT_SEP = "+";
+export const baseAgentId = (agentId) => (agentId || "").replace(/-ui$/, "").split(CUSTOM_AGENT_SEP)[0];
+
 export function agentIconUrl(agentId) {
   if (!agentId || agentId === "null" || agentId === "undefined") return null;
-  const canonical = agentId.replace(/-ui$/, "");
+  const canonical = baseAgentId(agentId);
   return `${AGENT_ICON_BASE}/${canonical}.${SVG_ICON_IDS.has(canonical) ? "svg" : "png"}`;
 }
 

@@ -34,7 +34,7 @@ import { sessionWorkspaceId, UNGROUPED_KEY } from "@/features/terminal/lib/paneL
 import { useDragReorder } from "@/features/terminal/hooks/useDragReorder";
 import { useGithubStars } from "@/shared/hooks/useGithubStars";
 import { GITHUB_REPO_URL } from "@/shared/constants/github";
-import { agentIconUrl, AGENT_ICON_CLS } from "@/features/terminal/constants/agentCli";
+import { agentIconUrl, AGENT_ICON_CLS, baseAgentId } from "@/features/terminal/constants/agentCli";
 import { PANEL_HEADER_H_CLASS } from "@/shared/constants/layout";
 import JarvisView from "@/features/jarvis/components/JarvisView";
 import { useJarvisStore } from "@/shared/stores/jarvisStore";
@@ -47,7 +47,7 @@ const UI_SWITCHABLE_ENGINES = new Set(["claude", "codex", "opencode", "antigravi
 // a running CLI. Only a settled terminal (idle, or a finished turn) may switch.
 export const SWITCHABLE_STATES = new Set(["idle", "done"]);
 
-export const isChatEngine = (agentId) => !!agentId && UI_SWITCHABLE_ENGINES.has(agentId.endsWith("-ui") ? agentId.slice(0, -3) : agentId);
+export const isChatEngine = (agentId) => !!agentId && UI_SWITCHABLE_ENGINES.has(baseAgentId(agentId));
 
 function TerminalHeader({
   sessions = [],

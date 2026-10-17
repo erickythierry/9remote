@@ -6,8 +6,9 @@ import { jsonOk, jsonErr } from "../lib/router.js";
 import { getIO } from "../transport/server.js";
 import { broadcast } from "../transport/broadcast.js";
 import { sendPushNotification } from "../features/terminal/pushManager.js";
-import { applyEvent, STATES, TYPE_TO_STATE, setConversationId, getConversation, requestAutoName, scheduleDoneCommit } from "../features/terminal/statusManager.js";
+import { applyEvent, STATES, TYPE_TO_STATE, setConversationId, getConversation, getSessionAgent, requestAutoName, scheduleDoneCommit } from "../features/terminal/statusManager.js";
 import { sessionIdFromHookPayload, SESSION_ID_RE } from "../features/terminal/agentCatalog.js";
+import { agentOverridesDetected, surfaceAgent } from "../features/terminal/customAgents.js";
 import { addNotification } from "../features/terminal/notificationManager.js";
 import { onWorkerDone } from "../features/jarvis/jarvisWake.js";
 
@@ -57,7 +58,8 @@ export function handleNotifyGet(req, res, { query }) {
 }
 
 function commitNotify(params, io, now) {
-  const { type, sessionId, tool } = params;
+  const { type, sessionId } = params;
+  const tool = attributeTool(sessionId, params.tool);
   const notification = { type, sessionId, tool, timestamp: now };
 
   // State machine: applyEvent maps legacy type (stop/notification) and new (working/blocked/done).
@@ -90,8 +92,15 @@ function commitNotify(params, io, now) {
   sendPushNotification({ ...notification, state });
 }
 
+// A custom launcher execs its base CLI, whose hook reports the base name.
+function attributeTool(sessionId, tool) {
+  const current = getSessionAgent(sessionId);
+  return agentOverridesDetected(current, tool) ? surfaceAgent(current) : tool;
+}
+
 function dispatchNotify(params) {
-  const { type, sessionId, tool } = params;
+  const { type, sessionId } = params;
+  const tool = attributeTool(sessionId, params.tool);
   const now = Date.now();
   const io = getIO();
   if (!io || !sessionId) return;

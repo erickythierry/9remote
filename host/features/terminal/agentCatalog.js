@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { customAgentById, customAgentList, customIdByBin } from "./customAgents.js";
 
 // TUI agent CLIs offered in the new-terminal modal.
 // cmd = binary name used for PATH detection AND the startup command typed into
@@ -51,13 +52,30 @@ export const AGENT_CLIS = [
 
 const AGENT_BY_ID = new Map(AGENT_CLIS.map((a) => [a.id, a]));
 
-export function agentById(agentId) {
-  return AGENT_BY_ID.get(agentId) || null;
+// A custom launcher behaves as its base agent but types its own command, so the resume
+// line swaps the base binary for it.
+function customAsAgent(custom) {
+  const base = AGENT_BY_ID.get(custom.base);
+  if (!base) return null;
+  const resume = base.resume && ((id) => {
+    const line = base.resume(id);
+    return line.startsWith(base.cmd) ? custom.cmd + line.slice(base.cmd.length) : line;
+  });
+  return { ...base, id: custom.id, label: custom.label, cmd: custom.cmd, ...(resume ? { resume } : {}), custom: true, base: custom.base };
 }
+
+export function agentById(agentId) {
+  const known = AGENT_BY_ID.get(agentId);
+  if (known) return known;
+  const custom = customAgentById(agentId);
+  return custom ? customAsAgent(custom) : null;
+}
+
+export const isCatalogAgent = (agentId) => AGENT_BY_ID.has(agentId);
 
 /** The TUI rename command for a catalog agent, or null where none is scriptable. */
 export function agentRenameCommand(agentId) {
-  return AGENT_BY_ID.get(agentId)?.renameCmd || null;
+  return agentById(agentId)?.renameCmd || null;
 }
 
 // --- Conversation ids reported by the CLIs' own hooks ---
@@ -70,7 +88,7 @@ export function agentRenameCommand(agentId) {
 export const SESSION_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
 export function hookSessionIdKeys(agentId) {
-  return AGENT_BY_ID.get(agentId)?.sessionIdKeys || [];
+  return agentById(agentId)?.sessionIdKeys || [];
 }
 
 /** The conversation id a CLI's hook payload carries, or null when it carries none. */
@@ -152,7 +170,9 @@ export function agentIdFromLaunchLine(line = "") {
   }
   const token = rest.match(LEADING_TOKEN_RE)?.[0];
   if (!token) return null;
-  return CMD_TOKEN_TO_ID.get(token.split("/").pop().replace(/\.(exe|cmd|bat|ps1)$/i, "")) || null;
+  const bin = token.split("/").pop().replace(/\.(exe|cmd|bat|ps1)$/i, "");
+  // A built-in binary name stays the built-in even when a custom launcher wraps it.
+  return (!CMD_TOKEN_TO_ID.has(bin) && customIdByBin(bin)) || CMD_TOKEN_TO_ID.get(bin) || null;
 }
 
 // Claude Code exclusive title prefix: ✳ (✳)
@@ -274,4 +294,22 @@ export function detectAgentClis(force = false) {
   }));
   detectCache = { at: Date.now(), result };
   return result;
+}
+
+// Outside the detection cache so an added or removed launcher shows on the next list.
+function customAgentEntries() {
+  const supportsEnvPrefix = process.platform !== "win32";
+  return customAgentList().flatMap((c) => {
+    const base = AGENT_BY_ID.get(c.base);
+    if (!base) return [];
+    return [{
+      id: c.id, label: c.label, cmd: c.cmd, custom: true, base: c.base,
+      ...(base.yolo ? { yolo: base.yolo } : {}),
+      ...(base.yoloEnv && supportsEnvPrefix ? { yoloEnv: base.yoloEnv } : {})
+    }];
+  });
+}
+
+export function listAgentClis(force = false) {
+  return [...detectAgentClis(force), ...customAgentEntries()];
 }

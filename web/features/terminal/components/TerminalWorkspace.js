@@ -27,6 +27,7 @@ import TerminalBeam from "@/shared/components/ui/TerminalBeam";
 import TerminalEmptyState from "@/features/terminal/components/TerminalEmptyState";
 import AiPaneView from "@/features/ai/components/AiPaneView";
 import { AI_UI_OPTIONS } from "@/features/ai/constants";
+import { baseAgentId } from "@/features/terminal/constants/agentCli";
 import ErrorBoundary from "@/shared/components/ui/ErrorBoundary";
 import useClampedMenu from "@/shared/hooks/useClampedMenu";
 import { vibrate } from "@/shared/utils/vibration";
@@ -444,7 +445,7 @@ function TerminalWorkspace({
     const sessionAgent = agentBySession[sessionId];
     // Resolved from the engine registry, not a hardcoded id list: adding an engine
     // must not need a second edit here (antigravity-ui rendered as a terminal).
-    const aiUi = AI_UI_OPTIONS.find((u) => u.id === sessionAgent);
+    const aiUi = sessionAgent?.endsWith("-ui") ? AI_UI_OPTIONS.find((u) => u.id === `${baseAgentId(sessionAgent)}-ui`) : null;
     if (aiUi) {
       return (
         <ErrorBoundary key={sessionId} title="AI Chat Pane">

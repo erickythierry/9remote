@@ -22,7 +22,7 @@ import { clearNotification } from "./notificationManager.js";
 import { touchWorking, touchOutput, startReaper, getStatuses, getStatus, getConversation, setSessionAgent, getSessionAgent, clearSessionAgent, clearStatus, forgetSession, onAgentChange, restoreConversation, setConversationPersister, onAutoNameRequest, onProcessChange, confirmShellClear, isPendingShellClear, applyEvent, scheduleDoneCommit } from "./statusManager.js";
 import { agentIdFromTitle } from "./agentCatalog.js";
 import { resumeCommand } from "./agentHistory.js";
-import { engineFromAgent } from "./conversationModes.js";
+import { surfaceAgent } from "./customAgents.js";
 import { sendTerminalInput, CLEAR_LINE } from "./sessionMode.js";
 import { broadcast } from "../../transport/broadcast.js";
 import { nextSeq, currentSeq, cacheChunk, clearSession as clearSeqSession } from "./seqStore.js";
@@ -179,7 +179,7 @@ async function respawnPendingSessions() {
       session.lastRows = rows;
       respawned++;
       const conv = getConversation(sessionId);
-      const engine = conv && engineFromAgent(conv.agent);
+      const engine = conv && surfaceAgent(conv.agent);
       const line = engine && conv.id && resumeCommand(engine, conv.id);
       if (line) setTimeout(() => sendTerminalInput(sessionId, session, `${CLEAR_LINE}${line}\r`), RESPAWN_RESUME_DELAY_MS);
     } catch (e) {

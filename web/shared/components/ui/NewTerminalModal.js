@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Terminal, Bot, Sparkles, Zap, Check, History, CornerDownLeft, Plus, Loader2, Globe } from "@/shared/components/ui/Icon";
+import { X, Terminal, Bot, Sparkles, Zap, Check, History, CornerDownLeft, Plus, Loader2, Globe, Trash2 } from "@/shared/components/ui/Icon";
 import { vibrate } from "@/shared/utils/vibration";
 import { useI18n } from "@/shared/i18n";
 import transliterate from "@sindresorhus/transliterate";
@@ -18,6 +18,7 @@ import { AI_UI_OPTIONS } from "@/features/ai/constants";
 import { connOf } from "@/shared/transport/hostConn";
 import { useBrowserStore } from "@/shared/stores/browserStore";
 import { useTerminalStore } from "@/shared/stores/terminalStore";
+import { useFleetStore } from "@/shared/stores/fleetStore";
 
 const QUICK_KEYS_MAC = ["⌥", "⇧", "↵"];
 const QUICK_KEYS_PC = ["Ctrl", "⇧", "↵"];
@@ -157,13 +158,18 @@ export default function NewTerminalModal({
   // CLI is installed on THIS host (no Claude Code on the machine, no Claude UI).
   //  empty spacer → Claude CLI → Claude UI → other pairs (CLI then UI) → CLI-only
   const visibleAiUis = AI_UI_OPTIONS;
+  // A custom launcher gets its own UI twin when its base has a chat UI: same pane, its command.
+  const uiTwin = (a) => {
+    const ui = visibleAiUis.find((u) => u.aiEngine === (a.custom ? a.base : a.id));
+    return ui && a.custom ? { ...ui, id: `${a.id}-ui`, label: `${a.label} UI`, short: `${a.short || a.label} UI`, aiEngine: a.id, custom: true, base: a.base } : ui;
+  };
   const allAgents = (agentClis || []).flatMap((a) => {
-    const ui = visibleAiUis.find((u) => u.aiEngine === a.id);
+    const ui = uiTwin(a);
     return ui ? [a, ui] : [a];
   });
 
   // Build a lookup: base engine id → its UI option (if any)
-  const uiById = new Map(visibleAiUis.map((u) => [u.aiEngine, u]));
+  const uiById = new Map(allAgents.filter((a) => a.isAiUi).map((u) => [u.aiEngine, u]));
   const pairBases = new Set(uiById.keys()); // engines that have a UI variant
 
   const claudeCli = allAgents.find((a) => a.id === "claude");
@@ -229,6 +235,28 @@ export default function NewTerminalModal({
     || (agent?.yoloEnv ? Object.entries(agent.yoloEnv).map(([k, v]) => `${k}=${v}`).join(" ") : null);
 
   const pick = (picked) => { vibrate(); setAgentId(picked?.id || ""); };
+
+  // Custom launchers live on the host; the list is re-fetched after every change.
+  const [custom, setCustom] = useState(null); // { label, base, cmd } while the form is open
+  const [customError, setCustomError] = useState("");
+  const baseChoices = (agentClis || []).filter((a) => !a.custom);
+  const refreshAgents = () => busRef?.current?.emit("getAgentClis", (res) => {
+    if (Array.isArray(res?.agents)) useTerminalStore.getState().setAgentClis(hostKey && hostKey !== "main" ? hostKey : (useFleetStore.getState().currentKey || "main"), res.agents);
+  });
+  const openCustom = () => { vibrate(); setCustomError(""); setCustom({ label: "", base: baseChoices.find((a) => a.id === "claude")?.id || baseChoices[0]?.id || "claude", cmd: "" }); };
+  const saveCustom = () => {
+    if (!custom.label.trim() || !custom.cmd.trim()) return setCustomError(t("terminal.customAgentRequired"));
+    busRef?.current?.emit("addCustomAgent", custom, (res) => {
+      if (!res?.success) return setCustomError(res?.error || "Error");
+      setCustom(null);
+      setAgentId(res.agent.id);
+      refreshAgents();
+    });
+  };
+  const removeCustom = (id) => {
+    vibrate();
+    busRef?.current?.emit("removeCustomAgent", { id }, () => { setAgentId(""); refreshAgents(); });
+  };
 
   // Roving focus across the 2-column grid — a radiogroup is arrow-navigated, not tabbed.
   const onGridKey = (e, index) => {
@@ -539,6 +567,48 @@ export default function NewTerminalModal({
         </div>
 
         <div className="px-4 pt-3 pb-4 space-y-3">
+          {custom ? (
+            <div className="space-y-1.5 p-2.5 rounded-brand bg-surface-2">
+              <input
+                type="text"
+                value={custom.label}
+                placeholder={t("terminal.customAgentName")}
+                onChange={(e) => setCustom({ ...custom, label: e.target.value })}
+                className="w-full px-3 py-2 bg-surface-3 rounded-brand text-sm text-text placeholder-text-muted focus:outline-none"
+              />
+              <select
+                value={custom.base}
+                aria-label={t("terminal.customAgentBase")}
+                onChange={(e) => setCustom({ ...custom, base: e.target.value })}
+                className="w-full px-3 py-2 bg-surface-3 rounded-brand text-sm text-text focus:outline-none"
+              >
+                {baseChoices.map((a) => <option key={a.id} value={a.id}>{t("terminal.customAgentBaseOf", { name: a.label })}</option>)}
+              </select>
+              <input
+                type="text"
+                value={custom.cmd}
+                placeholder={t("terminal.customAgentCmd")}
+                onChange={(e) => setCustom({ ...custom, cmd: e.target.value })}
+                className="w-full px-3 py-2 bg-surface-3 rounded-brand text-sm font-mono text-text placeholder-text-muted focus:outline-none"
+              />
+              {customError && <p className="text-xs text-red-400 px-0.5">{customError}</p>}
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setCustom(null)} className="flex-1 py-1.5 text-xs text-text-muted bg-surface-3 hover:bg-surface-1 rounded-brand">{t("common.cancel")}</button>
+                <button type="button" onClick={saveCustom} className="flex-1 py-1.5 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 rounded-brand">{t("common.save")}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 px-0.5">
+              <button type="button" onClick={openCustom} className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text">
+                <Plus size={13} className="text-brand-400" /> {t("terminal.addCustomAgent")}
+              </button>
+              {agent?.custom && (
+                <button type="button" onClick={() => removeCustom(agent.id.replace(/-ui$/, ""))} className="ml-auto flex items-center gap-1 text-xs text-text-muted hover:text-red-400">
+                  <Trash2 size={12} /> {t("terminal.removeCustomAgent")}
+                </button>
+              )}
+            </div>
+          )}
           {/* Dependent on the pick above, so they sit right under it */}
           {!agent && shells.length > 0 && (
             <select

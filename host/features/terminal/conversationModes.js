@@ -6,6 +6,7 @@ import fs from "fs";
 import path from "path";
 import { PATHS } from "../../lib/constants.js";
 import { createLogger } from "../../lib/logger.js";
+import { baseOfAgentId } from "./customAgents.js";
 
 const logger = createLogger("conversationModes");
 const MODES_FILE = path.join(PATHS.STATE, "conversationModes.json");
@@ -22,11 +23,12 @@ function load() {
   }
 }
 
-const keyOf = (agentId, conversationId) => `${agentId}:${conversationId}`;
+// A custom launcher shares its base engine's history, so its conversations key under the base.
+const keyOf = (agentId, conversationId) => `${baseOfAgentId(agentId)}:${conversationId}`;
 
 // The UI runs the base engine's CLI underneath, so it is not a mode of its own.
 export const modeFromAgent = (agentId) => (agentId?.endsWith("-ui") ? MODE.UI : MODE.TERMINAL);
-export const engineFromAgent = (agentId) => (agentId?.endsWith("-ui") ? agentId.slice(0, -3) : agentId);
+export const engineFromAgent = (agentId) => baseOfAgentId(agentId);
 
 export function getConversationMode(agentId, conversationId) {
   if (!agentId || !conversationId) return null;

@@ -6,6 +6,7 @@
 // alongside the session metadata and replayed on boot.
 
 import { SESSION_ID_RE, isShellProcess, agentIdFromProcess } from "./agentCatalog.js";
+import { agentOverridesDetected } from "./customAgents.js";
 import { setConversationMode, modeFromAgent } from "./conversationModes.js";
 
 export const STATES = Object.freeze({
@@ -132,6 +133,8 @@ const pendingShellClear = new Set();
 
 export function setSessionAgent(sessionId, agentId) {
   if (!sessionId || !agentId || sessionAgents.get(sessionId) === agentId) return;
+  // A custom launcher execs its base CLI, so process and title detection report the base.
+  if (agentOverridesDetected(sessionAgents.get(sessionId), agentId)) return;
   sessionAgents.set(sessionId, agentId);
   // A different CLI is now running here, so whatever chat the last one held is
   // not open in this terminal any more.

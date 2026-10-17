@@ -11,6 +11,7 @@ import {
   getConversation, getSessionAgent, setSessionAgent, setConversationId
 } from "./statusManager.js";
 import { MODE, engineFromAgent } from "./conversationModes.js";
+import { surfaceAgent } from "./customAgents.js";
 
 const logger = createLogger("sessionMode");
 // How long a CLI is given to exit before the other surface takes the conversation over:
@@ -36,7 +37,7 @@ function resolveConversation(sessionId) {
   if (conv?.id) return conv;
   const aiSession = globalAiManager.getSession(sessionId);
   const id = aiSession?.cliSessionId || aiSession?.threadId;
-  return id ? { agent: engineFromAgent(getSessionAgent(sessionId) || aiSession?.engine) || FALLBACK_ENGINE, id } : null;
+  return id ? { agent: surfaceAgent(getSessionAgent(sessionId) || aiSession?.engine) || FALLBACK_ENGINE, id } : null;
 }
 
 export async function setSessionMode(sessionId, mode, { sessions, io } = {}) {
@@ -45,8 +46,10 @@ export async function setSessionMode(sessionId, mode, { sessions, io } = {}) {
   if (mode !== MODE.UI && mode !== MODE.TERMINAL) return { success: false, error: "Invalid mode" };
   const conv = resolveConversation(sessionId);
 
-  const current = engineFromAgent(getSessionAgent(sessionId) || conv?.agent || session.agent);
-  if (!current || !UI_ENGINES.has(current)) return { success: false, error: `${current || "Session"} has no chat UI` };
+  // The surface keeps a custom launcher's id; only the engine check wants the base.
+  const current = surfaceAgent(getSessionAgent(sessionId) || conv?.agent || session.agent);
+  const engine = engineFromAgent(current);
+  if (!engine || !UI_ENGINES.has(engine)) return { success: false, error: `${engine || "Session"} has no chat UI` };
 
   const agentId = mode === MODE.UI ? `${current}-ui` : current;
   if ((session.agent || conv?.agent || "").endsWith("-ui") === (mode === MODE.UI)) {
@@ -129,10 +132,11 @@ function leaveUi(sessionId, session, conv) {
   // wherever the idle shell beneath happens to sit.
   const chatCwd = globalAiManager.getSession(sessionId)?.cwd || null;
   stopChatCli(sessionId);
-  const engine = engineFromAgent(conv?.agent || session.agent);
+  const surface = surfaceAgent(conv?.agent || session.agent);
+  const engine = engineFromAgent(surface);
   const line = conv?.id
-    ? resumeCommand(engine, conv.id, true)
-    : (agentById(engine)?.cmd || engine);
+    ? resumeCommand(surface, conv.id, true)
+    : (agentById(surface)?.cmd || engine);
   if (!line) return;
   exitTui(sessionId, session);
   // Align the shell with the chat's dir when the two drifted apart (chat in a

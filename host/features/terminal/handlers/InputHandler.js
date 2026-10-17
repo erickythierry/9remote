@@ -3,7 +3,7 @@ import { UPLOAD_DIR, saveSessionMetadata } from "../ptyHelper.js";
 import { getConversation, setSessionAgent, setConversationId, setLastPrompt } from "../statusManager.js";
 import { agentIdFromLaunchLine, parseResumeLine } from "../agentCatalog.js";
 import { resumeCommand } from "../agentHistory.js";
-import { engineFromAgent } from "../conversationModes.js";
+import { surfaceAgent } from "../customAgents.js";
 import { RESIZE_MIN_COLS, RESIZE_MIN_ROWS, RESIZE_MAX_COLS, RESIZE_MAX_ROWS, RESIZE_SHRINK_SETTLE_MS } from "../constants.js";
 import { setClipboardFromFile } from "../../../lib/clipboardSystem.js";
 import fs from "fs";
@@ -126,7 +126,7 @@ export function setupInputHandlers(socket, sessions) {
     const conv = getConversation(sessionId);
     // The engine, not the surface: a chat session records "claude-ui", and resumeCommand
     // only knows engine ids — it would answer null and the CLI would exit unrecovered.
-    const line = conv && resumeCommand(engineFromAgent(conv.agent), conv.id, true);
+    const line = conv && resumeCommand(surfaceAgent(conv.agent), conv.id, true);
     if (!line) return;
     const send = (data) => {
       if (session.daemon && daemonClient.isConnected()) return daemonClient.sendInput(sessionId, data);

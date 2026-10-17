@@ -528,7 +528,8 @@ export class AiSession {
       effort: this.effort,
       mode,
       options: this.options,
-      transport: this.options.transport || null
+      transport: this.options.transport || null,
+      launcher: this.options.launcher || ""
     };
     mine = def.build(ctx);
     this.adapter = mine;

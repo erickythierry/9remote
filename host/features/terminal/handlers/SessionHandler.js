@@ -5,7 +5,8 @@ import { resolveShell, getShellList, SESSION_NAME_MAX, AUTO_NAME_RE, OUTPUT_SLIC
 import { createLogger } from "../../../lib/logger.js";
 
 const capsLogger = createLogger("terminal");
-import { detectAgentClis, agentRenameCommand, agentIdFromProcess } from "../agentCatalog.js";
+import { listAgentClis, isCatalogAgent, agentRenameCommand, agentIdFromProcess } from "../agentCatalog.js";
+import { addCustomAgent, removeCustomAgent } from "../customAgents.js";
 import { listAgentSessions, matchLiveSessions, conversationTitle, deleteAgentSession, searchAgentSessions } from "../agentHistory.js";
 import { getLiveConversations, forgetSession, claimResumedConversation, getConversation, getSessionAgent, setSessionAgent } from "../statusManager.js";
 import { setSessionMode, sendTerminalInput, CLEAR_LINE } from "../sessionMode.js";
@@ -407,7 +408,19 @@ export function setupSessionHandlers(socket, io, sessions, workspaces, sessionWo
   // TUI agent CLIs detected on PATH (cached) — powers the new-terminal modal
   socket.on("getAgentClis", (_payload, callback) => {
     if (typeof _payload === "function") callback = _payload; // bare-emit legacy shape
-    callback?.({ success: true, agents: detectAgentClis() });
+    callback?.({ success: true, agents: listAgentClis() });
+  });
+
+  // Only a catalog agent can be a base: it carries the resume/rename/hook behaviour.
+  socket.on("addCustomAgent", ({ label, base, cmd } = {}, callback) => {
+    if (!isCatalogAgent(base)) return callback?.({ success: false, error: "Unknown base agent" });
+    const res = addCustomAgent({ label, base, cmd });
+    if (res.error) return callback?.({ success: false, error: res.error });
+    callback?.({ success: true, agent: res.agent });
+  });
+
+  socket.on("removeCustomAgent", ({ id } = {}, callback) => {
+    callback?.({ success: removeCustomAgent(id) });
   });
 
   // List past agent CLI conversations for a directory to resume in place.

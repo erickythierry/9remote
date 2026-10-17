@@ -12,6 +12,7 @@ import { broadcastAiStatus, listSessionRoots } from "../terminal/terminalSocket.
 import { getConversation, getSessionAgent, setConversationId, getStatus, touchWorking, requestAutoName } from "../terminal/statusManager.js";
 import { engineFromAgent } from "../terminal/conversationModes.js";
 import { SESSION_ID_RE } from "../terminal/agentCatalog.js";
+import { customAgentById } from "../terminal/customAgents.js";
 import { replayWindow, eventsSince } from "./aiEventSlice.js";
 import { AI_REPLAY_BYTES, AI_SINCE_MAX_BYTES, AI_ENGINES, AI_MODEL_CACHE_TTL_MS } from "./constants.js";
 import { rewindSupport, unsupportedReason, resolveRewindTarget } from "./rewind.js";
@@ -24,6 +25,12 @@ const logger = createLogger("ai");
 // The terminal's live cwd beats the client's copy — a chat must land where its terminal stands.
 function liveTerminalCwd(sessionId) {
   return listSessionRoots().find((s) => s.id === sessionId)?.cwd || null;
+}
+
+// The command a custom launcher runs in place of the bare engine binary; "" for built-ins.
+function launcherFor(sessionId, engine) {
+  const custom = customAgentById(getSessionAgent(sessionId));
+  return custom?.base === engine ? custom.cmd : "";
 }
 
 // CLI refusals phrased as "reload and try again", not protocol errors handed back.
@@ -352,6 +359,7 @@ export function setupAiHandlers(socket, io, manager = globalAiManager) {
       // Model defaults resolve host-side; adapters never read the machine's config.
       const spawnOptions = {
         ...(resumeId ? { ...options, cliSessionId: resumeId } : options),
+        launcher: launcherFor(sessionId, engine),
         defaultModel: defaultModelFor(engine),
         defaultEffort: defaultEffortFor(engine) || options.defaultEffort
       };
@@ -391,6 +399,7 @@ export function setupAiHandlers(socket, io, manager = globalAiManager) {
         if (!session) {
           // cwd rides along so the raced session lands in the right directory, not $HOME
           session = manager.createSession(sessionId, "claude", liveTerminalCwd(sessionId) || cwd || process.cwd(), {
+            launcher: launcherFor(sessionId, "claude"),
             defaultModel: defaultModelFor("claude"),
             defaultEffort: defaultEffortFor("claude")
           });
