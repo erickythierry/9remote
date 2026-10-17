@@ -227,6 +227,9 @@ export const FILE_WATCH = {
   IDLE_UNWATCH_MS: 60000
 };
 
+// Git state changes without touching watched dirs (stage, commit, edits in closed folders), so it is also polled.
+export const GIT_POLL_MS = 5000;
+
 export const GIT_REFRESH_EVENT = "fileExplorer:gitRefresh";
 
 export const STORAGE_KEYS = {

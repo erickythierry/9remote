@@ -8,10 +8,11 @@ import FileContextMenu from "@/shared/components/ui/FileContextMenu";
 import BranchPicker from "./BranchPicker.js";
 import { useI18n } from "@/shared/i18n";
 import useIsTouch from "@/shared/hooks/useIsTouch.js";
-import { GIT_STATUS_COLORS, GIT_REFRESH_EVENT, makeDiffPath, makeRepoDiffPath } from "../constants/fileExplorer.js";
+import { GIT_STATUS_COLORS, GIT_REFRESH_EVENT, GIT_POLL_MS, makeDiffPath, makeRepoDiffPath } from "../constants/fileExplorer.js";
 import { resolveFileIcon } from "../constants/fileIcons.js";
 import { commitSummary, pushSummary, pullSummary } from "../lib/gitOutput.js";
 import { addToGitignore } from "../lib/gitignore.js";
+import { pollWhileVisible } from "@/shared/utils/visibilityPoll";
 import { refreshWorkspaceGit } from "@/features/terminal/hooks/useWorkspaceGit";
 import { branchErrorText } from "../lib/branchErrors.js";
 
@@ -107,15 +108,19 @@ export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRe
   // { branch, create, files } while the user decides whether to stash.
   const [stashPrompt, setStashPrompt] = useState(null);
 
-  const reload = useCallback(async () => {
+  // silent: background poll, no spinner and no state write when nothing changed.
+  const reload = useCallback(async ({ silent = false } = {}) => {
     if (!workspace || !fileBus) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     const [statusRes, branchRes] = await Promise.all([
       fileBus.gitStatus?.(workspace),
       fileBus.gitBranch?.(workspace)
     ]);
-    setLoading(false);
-    if (statusRes?.success) setFiles(statusRes.files || []);
+    if (!silent) setLoading(false);
+    if (statusRes?.success) {
+      const next = statusRes.files || [];
+      setFiles((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+    }
     if (branchRes?.success) {
       setBranch(branchRes.branch || "");
       setAhead(branchRes.ahead ?? null);
@@ -127,10 +132,12 @@ export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRe
     reload();
   }, [reload]);
 
+  useEffect(() => pollWhileVisible(() => reload({ silent: true }), GIT_POLL_MS), [reload]);
+
   // Auto-refresh when files saved/created/deleted/renamed elsewhere
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handler = () => reload();
+    const handler = () => reload({ silent: true });
     const events = ["fileExplorer:fileSaved", "fileExplorer:fileCreated", "fileExplorer:fileDeleted", "fileExplorer:fileRenamed", GIT_REFRESH_EVENT];
     events.forEach(ev => window.addEventListener(ev, handler));
     return () => events.forEach(ev => window.removeEventListener(ev, handler));

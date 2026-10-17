@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { STORAGE_KEYS, GIT_REFRESH_EVENT } from "../constants/fileExplorer.js";
+import { STORAGE_KEYS, GIT_REFRESH_EVENT, GIT_POLL_MS } from "../constants/fileExplorer.js";
 import { useDirWatch, usePageVisible } from "./useDirWatch";
-import { buildWorkspaceGitStatus } from "@/features/fileExplorer/lib/gitStatusMap";
+import { buildWorkspaceGitStatus, sameStatusMap } from "@/features/fileExplorer/lib/gitStatusMap";
+import { pollWhileVisible } from "@/shared/utils/visibilityPoll";
 import { vibrate } from "@/shared/utils/vibration";
 
 // Lazy directory cache for the desktop tree: which dirs are loaded, which are
@@ -113,7 +114,7 @@ export function useFileTreeState({ workspace, fileBus }) {
     if (!workspace) return;
     const seq = ++gitSeqRef.current;
     const { map } = await buildWorkspaceGitStatus(fileBus, workspace);
-    if (seq === gitSeqRef.current) setGitStatusMap(map);
+    if (seq === gitSeqRef.current) setGitStatusMap((prev) => (sameStatusMap(prev, map) ? prev : map));
   }, [fileBus, workspace]);
 
   // Initial mount: load workspace root + restore expanded + git status
@@ -164,6 +165,8 @@ export function useFileTreeState({ workspace, fileBus }) {
       events.forEach(ev => window.removeEventListener(ev, handler));
     };
   }, [loadGitStatus]);
+
+  useEffect(() => pollWhileVisible(loadGitStatus, GIT_POLL_MS), [loadGitStatus]);
 
   // Persist expanded. Keyed by the workspace the set was built for, not the current one:
   // on a workspace switch this effect runs before the restore above has replaced the set,
