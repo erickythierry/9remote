@@ -103,6 +103,12 @@ test("an mcp tool drops its server prefix", () => {
   assert.equal(r.detail, "create_issue bug");
 });
 
+test("a skill tool shows loading skill with name", () => {
+  const r = describeLive({ engine: "claude", activeTool: tool("Skill", { skill: "dataviz" }) });
+  assert.equal(r.verb, "Loading skill");
+  assert.equal(r.detail, "dataviz");
+});
+
 test("thinking beats content while it streams", () => {
   const r = describeLive({ lastMsg: { thinking: "first\nsecond thought", content: "hello" } });
   assert.equal(r.verb, "Thinking");

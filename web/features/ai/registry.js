@@ -34,6 +34,8 @@ const DEFAULT_TOOL_MAP = Object.freeze({
   WebFetch: "search",
   Grep: "search",
   Glob: "search",
+  Skill: "skill",
+  skill: "skill",
 });
 
 // Normalize engine status naming (Codex inProgress vs Claude in_progress)
@@ -407,7 +409,7 @@ export class OpenCodeEngine extends AiEngine {
           grep: "search",
           list: "search",
           view: "file",
-          skill: "generic",
+          skill: "skill",
           plan_enter: "plan",
           plan_exit: "plan",
         },

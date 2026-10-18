@@ -18,6 +18,10 @@ export function describeActivity(tool, engine = "claude") {
       return clip(input.description || argOf(input) || "sub-agent", MAX_DETAIL);
     case "plan":
       return clip(baseName(input.path) || name, MAX_DETAIL);
+    case "skill": {
+      const sName = input.skill || input.skill_name || input.name || "";
+      return clip(`Skill: ${sName || "skill"}`, MAX_DETAIL);
+    }
     default:
       return clip([toolLabel(name), argOf(input)].filter(Boolean).join(" "), MAX_DETAIL);
   }
@@ -48,7 +52,7 @@ const toolLabel = (name = "") => {
 };
 
 const argOf = (input = {}) =>
-  input.url || input.query || input.pattern || input.name || baseName(input.path) || baseName(input.file_path) || "";
+  input.skill || input.skill_name || input.url || input.query || input.pattern || input.name || baseName(input.path) || baseName(input.file_path) || "";
 
 export function describeLive({ connected = true, hydrating = false, retryStatus = null, activeTool = null, engine = "", lastMsg = null } = {}) {
   // Offline outranks everything: no other line is true while there is no carrier.
@@ -101,6 +105,10 @@ export function describeLive({ connected = true, hydrating = false, retryStatus 
         return { verb: "Updating tasks", detail: clip(input.activeForm || input.subject || "", MAX_DETAIL), tone: "wait" };
       case "plan":
         return { verb: "Planning", detail: clip(baseName(input.path) || name, MAX_DETAIL), tone: "wait" };
+      case "skill": {
+        const sName = input.skill || input.skill_name || input.name || "";
+        return { verb: "Loading skill", detail: clip(sName, MAX_DETAIL), tone: "wait" };
+      }
       default:
         return { verb: "Calling", detail: clip([toolLabel(name), argOf(input)].filter(Boolean).join(" "), MAX_DETAIL), tone: "wait" };
     }

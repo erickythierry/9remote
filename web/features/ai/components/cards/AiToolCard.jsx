@@ -31,26 +31,43 @@ export const AiToolCard = memo(function AiToolCard({
   const [copied, setCopied] = useState(false);
   const openEditorFile = useTerminalStore((s) => s.openEditorFile);
 
-  const isCommand = Boolean(command) || typeof input !== "string" && Boolean(input?.command);
-  const pathArg = typeof input === "string" ? "" : input?.file_path || input?.notebook_path || input?.path || input?.file || "";
+  let parsedInput = input;
+  if (typeof input === "string" && input.trim().startsWith("{")) {
+    try {
+      parsedInput = JSON.parse(input);
+    } catch {}
+  }
+
+  const nameSuffix = /^skills?[:_](.+)$/i.exec(name)?.[1] || "";
+  const isSkill = /^skills?([:_].+)?$/i.test(name) || /^(load|use|call|activate)_skill$/i.test(name) || Boolean(typeof parsedInput === "object" && parsedInput?.skill);
+  const skillName = isSkill
+    ? (typeof parsedInput === "string"
+        ? parsedInput
+        : parsedInput?.skill || parsedInput?.skill_name || parsedInput?.name || parsedInput?.id || nameSuffix || "")
+    : "";
+  const rawArgs = isSkill && typeof parsedInput === "object" ? (parsedInput?.args ?? parsedInput?.arguments ?? parsedInput?.prompt ?? "") : "";
+  const skillArgs = typeof rawArgs === "string" ? rawArgs : rawArgs ? JSON.stringify(rawArgs) : "";
+
+  const isCommand = Boolean(command) || typeof parsedInput !== "string" && Boolean(parsedInput?.command);
+  const pathArg = typeof parsedInput === "string" ? "" : parsedInput?.file_path || parsedInput?.notebook_path || parsedInput?.path || parsedInput?.file || "";
   // Three kinds of text, each rendered differently: a command line stays verbatim, a path
   // goes relative to the workspace and trims at the head, and everything else (a search
   // pattern, an MCP call's query) is free prose that simply wraps.
-  const rawCmd = command || pathArg || (typeof input === "string"
-    ? input
-    : input?.command || input?.pattern || input?.query || "");
+  const rawCmd = command || pathArg || (isSkill ? skillArgs : "") || (typeof parsedInput === "string"
+    ? parsedInput
+    : parsedInput?.command || parsedInput?.pattern || parsedInput?.query || "");
   // Workspace-relative, deep segments dropped from the head — the row has one line for
   // this text, so the shorter form is what keeps a real file name visible in it.
   const displayCmd = !isCommand && pathArg && rawCmd === pathArg ? shortenPath(rawCmd, workspacePath) : rawCmd;
   // Full input goes in the expanded body only — the header stays a 2-line hint.
   const inputText = typeof input === "string" ? input : input && Object.keys(input).length ? JSON.stringify(input, null, 2) : "";
-  const filePath = input?.file_path || input?.path || input?.file || "";
+  const filePath = parsedInput?.file_path || parsedInput?.path || parsedInput?.file || "";
   const DoneIcon = DONE_ICONS[getToolCategory(engine, name)] || CheckCircle2;
 
   const handleCopy = (e) => {
     e.stopPropagation();
     vibrate();
-    const content = output || error || displayCmd;
+    const content = output || error || (isSkill && skillName ? `SKILL: ${skillName}${displayCmd ? ` ${displayCmd}` : ""}` : displayCmd);
     if (!content) return;
     navigator.clipboard.writeText(typeof content === "string" ? content : JSON.stringify(content, null, 2));
     setCopied(true);
@@ -92,8 +109,17 @@ export const AiToolCard = memo(function AiToolCard({
           <div className="min-w-0 flex-1 font-mono text-[11px] leading-relaxed line-clamp-2">
             {/* MCP tools are named mcp__<server>__<tool> — one unbreakable word. Never shrunk
                 or clipped: the name is the point of the row. */}
-            <span className="text-[10px] font-semibold text-text uppercase tracking-wider break-all px-1 py-0.5 rounded bg-surface-2/80 [box-decoration-break:clone]" title={name}>
-              {name}
+            <span
+              className="text-[10px] font-semibold text-text uppercase tracking-wider break-all px-1 py-0.5 rounded bg-surface-2/80 [box-decoration-break:clone]"
+              title={isSkill && skillName ? `Skill: ${skillName}` : name}
+            >
+              {isSkill && skillName ? (
+                <>
+                  SKILL: <span className="normal-case tracking-normal">{skillName}</span>
+                </>
+              ) : (
+                name
+              )}
             </span>
             {displayCmd && (
               <>
