@@ -1,3 +1,5 @@
+import { REPO_SCAN } from "@/features/terminal/constants/terminalConfig.js";
+
 // Git status → path map with parent-folder propagation.
 // Both explorers need "this folder contains changes" badges, and each had its own
 // copy of the walk (with different loop directions and payload shapes). One
@@ -39,7 +41,7 @@ export async function buildWorkspaceGitStatus(fileBus, workspace) {
   const root = await fileBus.gitStatus(workspace);
   if (root?.success) return { hasGit: true, map: buildGitStatusMap(root) };
 
-  const scan = await fileBus.gitScanRepos?.(workspace);
+  const scan = await fileBus.gitScanRepos?.(workspace, REPO_SCAN.maxDepth);
   const repos = (scan?.success ? scan.repos : []) || [];
   const maps = await Promise.all(repos.map(async (repo) => {
     // Windows hosts send relPath with backslashes; map keys are forward-slash.

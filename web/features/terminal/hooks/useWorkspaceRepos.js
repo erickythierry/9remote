@@ -11,9 +11,8 @@ export function useWorkspaceRepos(rootPath, propFileBus) {
   const [repos, setRepos] = useState([]);
   const [scanning, setScanning] = useState(false);
   const fileBus = propFileBus || useFileBusStore.getState();
-  // Off by default: a workspace sitting above a pile of reference clones should not list
-  // them. Monorepos whose real repos live at packages/*/ turn this on.
-  const [deep, setDeep] = useState(false);
+  // Deep by default: monorepos whose real repos live at packages/*/ are found immediately.
+  const [deep, setDeep] = useState(true);
 
   const scan = useCallback(async (force, deepScan) => {
     if (!rootPath || !fileBus?.gitScanRepos) return;

@@ -5,6 +5,7 @@ import { Folder, FolderOpen, GitBranch, GitFork, ChevronDown, Loader2, Check } f
 import { useI18n } from "@/shared/i18n";
 import { vibrate } from "@/shared/utils/vibration";
 import { shortenHomePath } from "../lib/workspaceGrouping";
+import { REPO_SCAN } from "../constants/terminalConfig";
 
 // Where a new terminal starts. Flat list grouped by repo — worktrees of a repo are its
 // rows, so picking "the feat/x checkout" is one tap, not a wizard. Repo scan + worktree
@@ -20,7 +21,7 @@ export default function LocationPicker({ workspacePath, workspaceName, fileBus, 
   const load = useCallback(async () => {
     if (!workspacePath || !fileBus?.gitScanRepos) return setGroups([]);
     setLoading(true);
-    const res = await fileBus.gitScanRepos(workspacePath);
+    const res = await fileBus.gitScanRepos(workspacePath, REPO_SCAN.maxDepth);
     const repos = res?.success ? res.repos || [] : [];
     // One worktree list per repo, in parallel — a workspace holds a handful, not hundreds.
     const built = await Promise.all(repos.map(async (repo) => {

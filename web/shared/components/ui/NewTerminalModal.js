@@ -10,6 +10,7 @@ import { shortenHomePath, suggestWorktreePath } from "@/features/terminal/lib/wo
 import { useAgentClis } from "@/features/terminal/hooks/useAgentClis";
 import { agentIconUrl, AGENT_ICON_CLS, canSkipPermissions, loadShellPref, loadTerminalPrefs, savePref, TERMINAL_PREF_KEYS } from "@/features/terminal/constants/agentCli";
 import { isMac } from "@/features/terminal/constants/shortcuts";
+import { REPO_SCAN } from "@/features/terminal/constants/terminalConfig";
 import LocationPicker from "@/features/terminal/components/LocationPicker";
 import { PlainShellGlyph } from "@/features/terminal/components/SessionAgentIcon";
 import AgentHistoryPanel from "@/features/terminal/components/AgentHistoryPanel";
@@ -124,7 +125,7 @@ export default function NewTerminalModal({
     // Lazy: pick the workspace's root repo silently — a multi-repo folder gets the
     // first repo at its root, no chooser UI.
     if (repos === null && modalFileBus?.gitScanRepos) {
-      modalFileBus.gitScanRepos(workspacePath).then((res) => {
+      modalFileBus.gitScanRepos(workspacePath, REPO_SCAN.maxDepth).then((res) => {
         const list = res?.success ? res.repos || [] : [];
         setRepos(list);
         setWtRepo((prev) => prev || list.find((r) => !r.relPath)?.path || list[0]?.path || null);

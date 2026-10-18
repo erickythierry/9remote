@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { WORKSPACE_GIT_POLL_MS } from "../constants/terminalConfig";
+import { WORKSPACE_GIT_POLL_MS, REPO_SCAN } from "../constants/terminalConfig";
 import { pollWhileVisible } from "@/shared/utils/visibilityPoll";
 
 // One changed-file count per workspace root, covering the root repo and every repo under
@@ -12,7 +12,7 @@ const entries = new Map(); // rootPath → { state, stop, refs, subs, fileBus }
 const EMPTY = { count: 0, perRepo: {} };
 
 function fetchOnce(entry, rootPath, force) {
-  entry.fileBus?.gitWorkspaceChangedCount?.(rootPath, undefined, force).then((res) => {
+  entry.fileBus?.gitWorkspaceChangedCount?.(rootPath, REPO_SCAN.maxDepth, force).then((res) => {
     if (!res?.success) return;
     entry.state = { count: res.count || 0, perRepo: res.perRepo || {} };
     entry.subs.forEach((fn) => fn(entry.state));

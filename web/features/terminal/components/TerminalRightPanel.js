@@ -68,8 +68,8 @@ function TerminalRightPanel({
   // unchanged repos hide until asked for; and only the open repo mounts an ScmPanel, so
   // N clones cost one `git status` rather than N. Both choices are per-workspace, hence
   // the forWorkspace stamp — otherwise another workspace's repo stays marked open.
-  const [gitView, setGitView] = useState({ forWorkspace: workspacePath, showClean: false, openRepo: null });
-  const view = gitView.forWorkspace === workspacePath ? gitView : { showClean: false, openRepo: null };
+  const [gitView, setGitView] = useState({ forWorkspace: workspacePath, showClean: true, openRepo: null });
+  const view = gitView.forWorkspace === workspacePath ? gitView : { showClean: true, openRepo: null };
   const showCleanRepos = view.showClean;
   const openRepo = view.openRepo; // null = auto-open a lone repo, "" = all collapsed
   const setShowCleanRepos = (showClean) => setGitView({ ...view, forWorkspace: workspacePath, showClean });
