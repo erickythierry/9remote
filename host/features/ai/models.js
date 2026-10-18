@@ -8,6 +8,7 @@ import { PATHS } from "../../lib/constants.js";
 import { writeJsonAtomic } from "../../lib/atomicFile.js";
 import { getExtendedEnv } from "./adapters/env.js";
 import { AI_MODEL_CACHE_TTL_MS } from "./constants.js";
+import { probeLauncher } from "./launcherProbe.js";
 
 const require = createRequire(import.meta.url);
 
@@ -39,19 +40,34 @@ function readClaudeSettings() {
   }
 }
 
-export function listModelOptions() {
-  const env = readClaudeSettings().env || {};
+// What claude will see: the launcher's own env and --settings win over ~/.claude/settings.json.
+function claudeConfigFor(launcher) {
+  const base = readClaudeSettings();
+  const probe = probeLauncher(launcher);
+  if (!probe) return { env: base.env || {}, picker: [], model: base.model };
+  return {
+    env: { ...(base.env || {}), ...probe.env },
+    picker: probe.settings.modelPicker?.options || [],
+    model: probe.settings.model || base.model
+  };
+}
+
+export function listModelOptions(launcher = "") {
+  const { env, picker } = claudeConfigFor(launcher);
   const options = [];
   const seen = new Set();
-  for (const [key, label] of SLOTS) {
-    const id = typeof env[key] === "string" ? env[key].trim() : "";
-    if (!id || seen.has(id)) continue;
+  const push = (id, label) => {
+    if (!id || seen.has(id)) return;
     seen.add(id);
     options.push({ id, label, short: id });
+  };
+  for (const [key, label] of SLOTS) {
+    push(typeof env[key] === "string" ? env[key].trim() : "", label);
   }
   if (options[0]?.label === "Custom" && typeof env.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME === "string") {
     options[0].label = env.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME.trim() || "Custom";
   }
+  for (const o of picker) push(typeof o?.model === "string" ? o.model.trim() : "", o.label || o.model);
 
   return options.length > 0 ? options : FALLBACK;
 }
@@ -301,19 +317,20 @@ const MODEL_LISTERS = {
   hermes: listHermesModelOptions
 };
 
-export function listModelOptionsFor(engine) {
-  return MODEL_LISTERS[engine]?.() ?? null;
+export function listModelOptionsFor(engine, launcher = "") {
+  return MODEL_LISTERS[engine]?.(launcher) ?? null;
 }
 
 // Engine → its own default-model reader; an engine with no entry has no CLI default to read.
 let piFirstModel = { at: 0, id: "" };
 const DEFAULT_MODEL_READERS = {
-  claude() {
-    const settings = readClaudeSettings();
-    const alias = typeof settings.model === "string" ? settings.model : "";
+  claude(launcher = "") {
+    const { env, model } = claudeConfigFor(launcher);
+    // ANTHROPIC_MODEL outranks settings.json's model in the CLI.
+    const alias = (typeof env.ANTHROPIC_MODEL === "string" && env.ANTHROPIC_MODEL) || (typeof model === "string" ? model : "");
     if (!alias) return "";
     const slot = SLOTS.find(([key, label]) => label.toLowerCase() === alias.toLowerCase());
-    return (slot && settings.env?.[slot[0]]) || alias;
+    return (slot && env[slot[0]]) || alias;
   },
   codex() {
     try {
@@ -379,10 +396,10 @@ const DEFAULT_MODEL_READERS = {
   }
 };
 
-export function resolveDefaultModel(engine) {
+export function resolveDefaultModel(engine, launcher = "") {
   const saved = readAiPreferences()[engine]?.model;
   if (typeof saved === "string" && saved) return saved.split("\t")[0].trim();
-  return DEFAULT_MODEL_READERS[engine]?.() || "";
+  return DEFAULT_MODEL_READERS[engine]?.(launcher) || "";
 }
 
 // Resolve default reasoning effort from preferences or CLI configuration.

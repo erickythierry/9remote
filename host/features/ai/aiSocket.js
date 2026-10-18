@@ -211,8 +211,9 @@ export function publicSession(session) {
 // Two engines answer a catalog read by spawning a CLI — cache it across connects.
 const modelCache = new Map();
 
-async function cachedModelOptionsFor(engine) {
-  const hit = modelCache.get(engine);
+async function cachedModelOptionsFor(engine, launcher) {
+  const key = `${engine}\0${launcher}`;
+  const hit = modelCache.get(key);
   const now = Date.now();
   if (hit && now - hit.at < AI_MODEL_CACHE_TTL_MS) return hit.options;
   let options;
@@ -222,15 +223,15 @@ async function cachedModelOptionsFor(engine) {
     options = await listAllOpencodeModelOptions();
     if (!options.length) options = listOpencodeModelOptions();
   } else {
-    options = listModelOptionsFor(engine);
+    options = listModelOptionsFor(engine, launcher);
   }
-  modelCache.set(engine, { at: now, options });
+  modelCache.set(key, { at: now, options });
   return options;
 }
 
 // The CLI's own default for the picker; a host-specific id must never fall back to a canned one.
-function defaultModelFor(engine) {
-  return resolveDefaultModel(engine) || "";
+function defaultModelFor(engine, launcher = "") {
+  return resolveDefaultModel(engine, launcher) || "";
 }
 
 // Display only: forcing it into argv would override a project-level setting.
@@ -244,7 +245,8 @@ async function emitConnectMetadata(session, engine) {
   const mcpServers = listMcpServers(engine, session.cwd);
   // Live '/' menu feed the adapter already fetched (opencode, omp).
   const commands = session.adapter?.metadata?.commands;
-  const modelOptions = await cachedModelOptionsFor(engine);
+  const launcher = launcherFor(session.id, engine);
+  const modelOptions = await cachedModelOptionsFor(engine, launcher);
   // Kept on the session so a Clear can re-seed the log with the same metadata
   session.skills = skills;
   // Append init once; broadcast every connect so joiners still see current metadata.
@@ -253,7 +255,7 @@ async function emitConnectMetadata(session, engine) {
     mcpServers,
     ...(commands?.length ? { commands } : {}),
     modelOptions,
-    model: session.model || defaultModelFor(engine),
+    model: session.model || defaultModelFor(engine, launcher),
     // The session's pick wins; else the CLI's config is what the composer must show.
     effort: session.effort || defaultEffortFor(engine)
   }, !session.hasRecordedInit());
@@ -360,7 +362,7 @@ export function setupAiHandlers(socket, io, manager = globalAiManager) {
       const spawnOptions = {
         ...(resumeId ? { ...options, cliSessionId: resumeId } : options),
         launcher: launcherFor(sessionId, engine),
-        defaultModel: defaultModelFor(engine),
+        defaultModel: defaultModelFor(engine, launcherFor(sessionId, engine)),
         defaultEffort: defaultEffortFor(engine) || options.defaultEffort
       };
       const session = manager.createSession(sessionId, engine, cwd, { ...spawnOptions, mock });
@@ -400,7 +402,7 @@ export function setupAiHandlers(socket, io, manager = globalAiManager) {
           // cwd rides along so the raced session lands in the right directory, not $HOME
           session = manager.createSession(sessionId, "claude", liveTerminalCwd(sessionId) || cwd || process.cwd(), {
             launcher: launcherFor(sessionId, "claude"),
-            defaultModel: defaultModelFor("claude"),
+            defaultModel: defaultModelFor("claude", launcherFor(sessionId, "claude")),
             defaultEffort: defaultEffortFor("claude")
           });
           await session.ready;
