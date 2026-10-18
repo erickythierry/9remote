@@ -16,7 +16,8 @@ import {
   SIDEBAR_MAX_WIDTH,
   BOTTOM_PANEL_DEFAULT_HEIGHT,
   STORAGE_KEYS,
-  MAX_OPEN_TABS
+  MAX_OPEN_TABS,
+  GIT_REFRESH_EVENT
 } from "../constants/fileExplorer.js";
 
 // Desktop-only VSCode-like layout: ActivityBar | Sidebar | EditorArea + StatusBar
@@ -135,13 +136,28 @@ export default function FileWorkspaceDesktop({
     setActiveFile(null);
   }, []);
 
-  // Load git branch
+  // Load git branch (tracks activeFile directory or workspace)
   useEffect(() => {
-    if (!workspace || !fileBus) return;
-    fileBus.gitBranch?.(workspace).then(r => {
-      if (r?.success) setGitBranch(r.branch || "");
-    }).catch(() => {});
-  }, [workspace, fileBus]);
+    if (!fileBus) return;
+    const targetDir = activeFile
+      ? activeFile.slice(0, Math.max(activeFile.lastIndexOf("/"), activeFile.lastIndexOf("\\")))
+      : workspace;
+    const fetchBranch = () => {
+      if (!targetDir) return;
+      fileBus.gitBranch?.(targetDir).then((r) => {
+        if (r?.success) setGitBranch(r.branch || "");
+        else if (workspace && targetDir !== workspace) {
+          fileBus.gitBranch?.(workspace).then((rw) => {
+            if (rw?.success) setGitBranch(rw.branch || "");
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    };
+    fetchBranch();
+    if (typeof window === "undefined") return;
+    window.addEventListener(GIT_REFRESH_EVENT, fetchBranch);
+    return () => window.removeEventListener(GIT_REFRESH_EVENT, fetchBranch);
+  }, [workspace, fileBus, activeFile]);
 
   // Keyboard shortcuts
   useFileExplorerShortcuts({

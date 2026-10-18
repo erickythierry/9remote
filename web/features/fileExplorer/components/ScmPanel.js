@@ -129,7 +129,8 @@ export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRe
   }, [workspace, fileBus]);
 
   useEffect(() => {
-    reload();
+    const id = setTimeout(() => void reload(), 0);
+    return () => clearTimeout(id);
   }, [reload]);
 
   useEffect(() => pollWhileVisible(() => reload({ silent: true }), GIT_POLL_MS), [reload]);
@@ -382,8 +383,16 @@ export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRe
         <textarea
           value={commitMsg}
           onChange={(e) => setCommitMsg(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && commitMsg.trim() && files.length) {
+              e.preventDefault();
+              handleCommitClick(false);
+            }
+          }}
           rows={2}
-          placeholder={t("git.commitPlaceholder")}
+          placeholder={branch
+            ? t("git.commitPlaceholderBranch", { branch, defaultValue: `Message (Ctrl+Enter to commit on "${branch}")` })
+            : t("git.commitPlaceholder")}
           className="w-full bg-surface-2 border border-border rounded-brand px-2 py-1 text-xs text-text placeholder-text-subtle focus:outline-none focus:border-brand-500 resize-none"
         />
 

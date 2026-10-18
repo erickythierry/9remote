@@ -6,7 +6,7 @@ import { ACTIVITY_PANELS } from "../constants/fileExplorer.js";
 import { PANEL_HEADER_HEIGHT } from "@/shared/constants/layout";
 import ExplorerPanel from "./ExplorerPanel.js";
 import SearchPanel from "./SearchPanel.js";
-import ScmPanel from "./ScmPanel.js";
+import SourceControlPanel from "./SourceControlPanel.js";
 import SettingsPanel from "./SettingsPanel.js";
 
 const PANEL_TITLES = {
@@ -31,7 +31,7 @@ function renderBody({ activePanel, workspace, fileBus, onOpenFile, onSwitchWorks
     case ACTIVITY_PANELS.search:
       return <SearchPanel workspace={workspace} fileBus={fileBus} onOpenFile={onOpenFile} />;
     case ACTIVITY_PANELS.scm:
-      return <ScmPanel workspace={workspace} fileBus={fileBus} onOpenFile={onOpenFile} />;
+      return <SourceControlPanel workspace={workspace} fileBus={fileBus} onOpenFile={onOpenFile} />;
     case ACTIVITY_PANELS.settings:
       return <SettingsPanel />;
     default:
@@ -54,9 +54,9 @@ export default function SidebarPanel({
     fileBus?.refresh?.();
   };
 
-  // The explorer draws its own title bar (workspace name + new file/folder/refresh), so a
-  // second strip above it would just repeat the word EXPLORER and the refresh button.
-  const ownsHeader = activePanel === ACTIVITY_PANELS.explorer;
+  // The explorer and source control panels draw their own title bars, so a
+  // second strip above them would just repeat the panel title and refresh button.
+  const ownsHeader = activePanel === ACTIVITY_PANELS.explorer || activePanel === ACTIVITY_PANELS.scm;
 
   return (
     <div className="flex flex-col h-full">

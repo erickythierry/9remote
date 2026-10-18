@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { REPO_SCAN } from "../constants/terminalConfig";
 import { useFileBusStore } from "@/shared/stores/fileBusStore";
+import { GIT_REFRESH_EVENT } from "@/features/fileExplorer/constants/fileExplorer.js";
 
 // Repos found at or under a workspace root. The agent memoizes the disk walk; this hook
 // only holds the result and exposes an explicit refresh, so switching tabs never rescans.
@@ -29,6 +30,14 @@ export function useWorkspaceRepos(rootPath, propFileBus) {
   useEffect(() => {
     const id = setTimeout(() => void scan(false, deep), 0);
     return () => clearTimeout(id);
+  }, [scan, deep]);
+
+  // Rescan on external git refresh events (e.g. branch checkout, commits)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => void scan(false, deep);
+    window.addEventListener(GIT_REFRESH_EVENT, handler);
+    return () => window.removeEventListener(GIT_REFRESH_EVENT, handler);
   }, [scan, deep]);
 
   const refresh = useCallback(() => scan(true, deep), [scan, deep]);

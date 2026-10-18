@@ -322,6 +322,8 @@ export default {
     stageAllConfirmMessage: "No changes are staged. Stage all changes and commit?",
     stageAndCommit: "Stage & Commit",
     gitActions: "Git actions",
+    repositories: "Repositories",
+    commitPlaceholderBranch: "Message (Ctrl+Enter to commit on \"{branch}\")",
     switchBranch: "Switch branch",
     branchSearch: "Search branches",
     branchLocal: "Local branches",
