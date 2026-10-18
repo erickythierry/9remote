@@ -75,12 +75,22 @@ export default function FileTree({
               onClick={() => { vibrate(); file.type === "folder" ? onFolderClick(file) : onFileClick(file); }}
               className="flex-1 flex items-center gap-2.5 text-left min-w-0"
             >
-              <span className="flex-shrink-0">{getFileIcon(file)}</span>
+              <span className="flex-shrink-0 relative">
+                {getFileIcon(file)}
+                {file.type === "folder" && gitStatus === "folder-changed" && (
+                  <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-git-modified ring-1 ring-bg" />
+                )}
+              </span>
               <div className="flex-1 min-w-0">
                 <div className={`truncate text-sm ${statusColor || "text-text"}`} title={file.name}>
                   {file.name}
+                  {gitStatus === "folder-changed" && (
+                    <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-git-modified align-middle" />
+                  )}
                   {gitStatus && gitStatus !== "folder-changed" && (
-                    <span className="ml-2 text-xs opacity-70">[{gitStatus}]</span>
+                    <span className={`ml-2 text-xs font-semibold ${statusColor}`}>
+                      [{gitStatus === "?" ? "U" : gitStatus}]
+                    </span>
                   )}
                 </div>
                 {file.type !== "folder" && file.sizeFormatted && (

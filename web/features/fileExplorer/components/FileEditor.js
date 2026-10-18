@@ -183,7 +183,7 @@ export default function FileEditor({ filePath, fileBus, onBack, line, column, wo
           isImageFile(filePath) ? (
             <ImageDiffView filePath={filePath} status={diffStatus} workspace={workspace} fileBus={fileBus} />
           ) : (
-            <div className="h-full overflow-auto p-2">
+            <div className="h-full overflow-auto p-2 bg-editor-bg">
               {diffLoading ? (
                 <div className="h-full flex items-center justify-center text-text-muted">{t("common.loading")}</div>
               ) : diff ? <DiffBody diff={diff} /> : (
@@ -222,7 +222,7 @@ export default function FileEditor({ filePath, fileBus, onBack, line, column, wo
               <X size={18} />
             </button>
           </div>
-          <div className="flex-1 min-h-0 overflow-auto p-2">
+          <div className="flex-1 min-h-0 overflow-auto p-2 bg-editor-bg">
             {isImageFile(filePath) ? (
               <ImageDiffView filePath={filePath} status={gitStatus?.status} workspace={workspace} fileBus={fileBus} />
             ) : diff ? (

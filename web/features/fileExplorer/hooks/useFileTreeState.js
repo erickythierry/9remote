@@ -117,6 +117,10 @@ export function useFileTreeState({ workspace, fileBus }) {
     if (seq === gitSeqRef.current) setGitStatusMap((prev) => (sameStatusMap(prev, map) ? prev : map));
   }, [fileBus, workspace]);
 
+  useEffect(() => {
+    if (fileBus && workspace) loadGitStatus();
+  }, [fileBus, workspace, loadGitStatus]);
+
   // Initial mount: load workspace root + restore expanded + git status
   useEffect(() => {
     if (!workspace) return;

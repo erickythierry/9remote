@@ -84,6 +84,13 @@ function TerminalRightPanel({
   const dirtyRepos = visibleRepos.filter((r) => countOf(r) > 0);
   // Badge on the Git tab: total changed files across the workspace's repos
   const dirtyCount = dirtyRepos.reduce((n, r) => n + countOf(r), 0);
+  const lastDirtyCountRef = useRef(dirtyCount);
+  useEffect(() => {
+    if (lastDirtyCountRef.current !== dirtyCount) {
+      lastDirtyCountRef.current = dirtyCount;
+      if (typeof window !== "undefined") window.dispatchEvent(new Event(GIT_REFRESH_EVENT));
+    }
+  }, [dirtyCount]);
   // Main repo is kept visible even when unchanged so its branch and push actions stay accessible.
   const gitRepos = showCleanRepos ? visibleRepos : visibleRepos.filter((r) => countOf(r) > 0 || isMainRepo(r));
   const hiddenCleanCount = showCleanRepos ? 0 : visibleRepos.length - gitRepos.length;
@@ -254,7 +261,7 @@ function TerminalRightPanel({
           <PanelButton
             icon={RefreshCw}
             label={t("workspaces.refreshRepos")}
-            onClick={() => { refresh(); treeActions?.refresh?.(); }}
+            onClick={() => { refresh(); treeActions?.refresh?.(); if (typeof window !== "undefined") window.dispatchEvent(new Event(GIT_REFRESH_EVENT)); }}
             disabled={scanning}
             spinning={scanning}
           />

@@ -47,6 +47,7 @@
   --color-git-modified: var(--git-modified);
   --color-git-deleted: var(--git-deleted);
   --color-git-untracked: var(--git-untracked);
+  --color-editor-bg: var(--editor-bg);
 
   /* Border Radius */
   --radius-brand: 8px;
@@ -306,6 +307,7 @@
   --git-modified: #e2c08d;
   --git-deleted: #c74e39;
   --git-untracked: #73c991;
+  --editor-bg: #282c34;
   --shadow-soft: 0 1px 2px 0 rgba(0,0,0,0.4);
   --shadow-elev:
     inset 0 1px 0 0 rgba(255,255,255,0.04),
@@ -377,6 +379,7 @@
   --git-modified: #895503;
   --git-deleted: #ad0707;
   --git-untracked: #007100;
+  --editor-bg: #ffffff;
   --shadow-soft: 0 1px 2px 0 rgba(0,0,0,0.04);
   --shadow-elev: 
     inset 0 1px 0 0 rgba(255,255,255,0.8),
@@ -1310,7 +1313,7 @@ body.keyboard-open .safe-area-bottom {
 .diff-themed .d2h-file-header { background: var(--surface-2); color: var(--text); border-bottom: 1px solid var(--border); padding: 8px 12px; }
 .diff-themed .d2h-file-name { color: var(--text); }
 .diff-themed .d2h-diff-table { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace; font-size: 12.5px; line-height: 1.55; }
-.diff-themed .d2h-code-line, .diff-themed .d2h-code-side-line { background: var(--surface); padding: 0 8px; }
+.diff-themed .d2h-code-line, .diff-themed .d2h-code-side-line { background: var(--editor-bg); padding: 0 8px; }
 .diff-themed .d2h-code-line-ctn { color: var(--text); }
 .diff-themed .d2h-code-linenumber, .diff-themed .d2h-code-side-linenumber { background: var(--surface-2); color: var(--text-subtle); border-right: 1px solid var(--border); position: static !important; }
 .diff-themed .d2h-del { background: rgba(var(--danger-rgb), 0.12) !important; border-color: rgba(var(--danger-rgb), 0.3); }

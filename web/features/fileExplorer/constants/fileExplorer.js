@@ -175,7 +175,10 @@ export const GIT_STATUS_COLORS = {
   A: "text-git-added",
   D: "text-git-deleted",
   "?": "text-git-untracked",
-  U: "text-git-modified"
+  U: "text-git-untracked",
+  R: "text-git-modified",
+  C: "text-git-modified",
+  "folder-changed": "text-git-modified"
 };
 
 export const EXPLORER_ROW = {

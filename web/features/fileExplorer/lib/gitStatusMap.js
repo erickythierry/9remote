@@ -10,20 +10,27 @@ import { REPO_SCAN } from "@/features/terminal/constants/terminalConfig.js";
  * directory of a changed file as "folder-changed".
  * Accepts both payload shapes seen from the host: {path,status} and {file,code}.
  * `prefix` re-keys a nested repo's entries under their path relative to the workspace.
+ * `stripPrefix` strips leading path segments when workspace is a subdirectory in a repo.
  */
-export function buildGitStatusMap(result, prefix = "") {
+export function buildGitStatusMap(result, prefix = "", stripPrefix = "") {
   if (!result?.success) return {};
   const list = result.files || result.status || [];
   const map = {};
   for (const entry of list) {
-    const rel = entry?.path || entry?.file;
+    let rel = (entry?.path || entry?.file || "").replace(/\\/g, "/");
     const status = entry?.status || entry?.code;
     if (!rel || !status) continue;
-    map[prefix + rel] = status;
-    // Mark ancestors so a collapsed folder still shows it has changes inside.
-    const parts = rel.split("/");
+    if (stripPrefix) {
+      if (!rel.startsWith(stripPrefix)) continue;
+      rel = rel.slice(stripPrefix.length);
+    }
+    const fullRel = (prefix + rel).replace(/\/+/g, "/").replace(/^\//, "");
+    if (!fullRel) continue;
+    map[fullRel] = status;
+    // Mark all ancestors so a collapsed folder still shows it has changes inside.
+    const parts = fullRel.split("/");
     for (let i = 1; i < parts.length; i++) {
-      const parent = prefix + parts.slice(0, i).join("/");
+      const parent = parts.slice(0, i).join("/");
       if (!map[parent]) map[parent] = "folder-changed";
     }
   }
@@ -32,20 +39,29 @@ export function buildGitStatusMap(result, prefix = "") {
 
 /**
  * Status map for a workspace that may not be a repo itself — a parent folder holding
- * nested repos. Tries the root first (fast path, one call); on failure scans for
- * nested repos and merges each one's status re-keyed under its relPath, so the keys
- * still match relativeTo(workspace, file.path) in both trees.
+ * nested repos, or a subdirectory of a repository.
  * Returns { hasGit, map }: hasGit is true for a repo root OR any nested repo.
  */
 export async function buildWorkspaceGitStatus(fileBus, workspace) {
   const root = await fileBus.gitStatus(workspace);
-  if (root?.success) return { hasGit: true, map: buildGitStatusMap(root) };
+  if (root?.success) {
+    const gitRoot = root.gitRoot || root.repoRoot;
+    let stripPrefix = "";
+    if (gitRoot && workspace) {
+      const normRoot = gitRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+      const normWs = workspace.replace(/\\/g, "/").replace(/\/+$/, "");
+      if (normWs.startsWith(`${normRoot}/`)) {
+        stripPrefix = normWs.slice(normRoot.length + 1) + "/";
+      }
+    }
+    return { hasGit: true, map: buildGitStatusMap(root, "", stripPrefix) };
+  }
 
   const scan = await fileBus.gitScanRepos?.(workspace, REPO_SCAN.maxDepth);
   const repos = (scan?.success ? scan.repos : []) || [];
   const maps = await Promise.all(repos.map(async (repo) => {
     // Windows hosts send relPath with backslashes; map keys are forward-slash.
-    const rel = String(repo.relPath || "").split("\\").join("/");
+    const rel = String(repo.relPath || "").replace(/\\/g, "/").replace(/\/+$/, "");
     if (!rel) return null; // the root itself — already tried and failed above
     const res = await fileBus.gitStatus(repo.path);
     if (!res?.success) return null;

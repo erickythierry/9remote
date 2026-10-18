@@ -205,7 +205,7 @@ export default function TerminalEditorPanel({
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden bg-editor-bg">
         {isDiff ? (
           <DiffView diffPath={makeDiffPath(diff.status, diff.filePath)} workspace={diffRepo} fileBus={fileBus} compact />
         ) : isPreviewable(filePath) ? (

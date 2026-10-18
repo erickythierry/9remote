@@ -14,16 +14,28 @@ export const indentFor = (depth, compact = false) => {
   return m.indentBase + depth * m.indentStep;
 };
 
-/** Git badge, right-aligned: a dot for "contains changes", the status letters otherwise. */
+/** Git badge, right-aligned: an amber dot for "contains changes", the status letters otherwise. */
 function GitBadge({ status }) {
   if (!status) return null;
   if (status === "folder-changed") {
-    return <span className="ml-auto mr-2 w-1.5 h-1.5 rounded-full bg-blue-400/70" />;
+    return <span className="ml-auto mr-2 w-1.5 h-1.5 rounded-full bg-git-modified shrink-0" title="Contains modified files" />;
   }
-  return <span className={`ml-auto mr-2 text-[10px] font-semibold ${GIT_STATUS_COLORS[status] || "text-text-muted"}`}>{status}</span>;
+  const color = GIT_STATUS_COLORS[status] || "text-text-muted";
+  return (
+    <span
+      className={`ml-auto mr-2 text-[10px] font-semibold font-mono shrink-0 ${color}`}
+      title={status === "M" ? "Modified" : status === "A" ? "Added" : status === "?" ? "Untracked" : status === "D" ? "Deleted" : status}
+    >
+      {status === "?" ? "U" : status}
+    </span>
+  );
 }
 
-const nameColor = (status) => GIT_STATUS_COLORS[status] || "";
+const nameColor = (status) => {
+  if (!status) return "";
+  if (status === "folder-changed") return "text-git-modified";
+  return GIT_STATUS_COLORS[status] || "";
+};
 
 export function TruncatedNote({ depth, compact = false }) {
   return (
@@ -88,8 +100,14 @@ function ExplorerRow({
           <span className="w-4 h-4" />
         )}
 
-        <span className="shrink-0">
+        <span className="shrink-0 relative">
           {isFolder ? resolveFolderIcon(file.name, isExpanded, m.icon) : resolveFileIcon(file, m.icon)}
+          {isFolder && gitStatus === "folder-changed" && (
+            <span
+              className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-git-modified ring-1 ring-bg"
+              title="Folder contains modified files"
+            />
+          )}
         </span>
 
         {isRenaming ? (
@@ -106,7 +124,7 @@ function ExplorerRow({
             className={`flex-1 bg-surface-3 text-text ${m.text} px-1 py-0.5 rounded outline-none border border-brand-500`}
           />
         ) : (
-          <span className={`flex-1 truncate text-text ${nameColor(gitStatus)}`} title={file.name}>{file.name}</span>
+          <span className={`flex-1 truncate ${nameColor(gitStatus) || "text-text"}`} title={file.name}>{file.name}</span>
         )}
 
         {!isRenaming && <GitBadge status={gitStatus} />}

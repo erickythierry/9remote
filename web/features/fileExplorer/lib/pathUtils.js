@@ -13,7 +13,11 @@ export function dirname(p) {
 
 /** Path relative to the workspace root (used for git status keys + display). */
 export function relativeTo(workspace, p) {
-  return p && workspace ? p.replace(`${workspace}/`, "") : p;
+  if (!p || !workspace) return p || "";
+  const normW = workspace.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normP = p.replace(/\\/g, "/");
+  if (normP.startsWith(`${normW}/`)) return normP.slice(normW.length + 1);
+  return normP === normW ? "" : normP;
 }
 
 /** Last non-empty path segment — the folder name shown in the header. */

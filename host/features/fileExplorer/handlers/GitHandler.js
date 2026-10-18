@@ -105,19 +105,21 @@ function capDiff(diff) {
 
 export function setupGitHandlers(socket) {
   socket.on("gitStatus", ({ repoPath }, callback) => {
-    if (!repoPath || !findGitRoot(repoPath)) return callback({ success: false, error: "Not a git repository or git not available" });
+    if (!repoPath) return callback({ success: false, error: "repoPath required" });
+    const gitRoot = findGitRoot(repoPath);
+    if (!gitRoot) return callback({ success: false, error: "Not a git repository or git not available" });
     try {
       // -uall: without it git collapses an untracked directory into one entry, which the
       // UI then opens as a file (EISDIR) and counts as zero added lines.
       const result = execSync("git status --porcelain --no-renames -uall", {
-        cwd: repoPath, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true
+        cwd: gitRoot, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true
       });
 
       // Get diff stats for tracked files
       let diffStats = {};
       try {
         const statResult = execSync("git diff HEAD --numstat --no-renames", {
-          cwd: repoPath, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true
+          cwd: gitRoot, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true
         });
         statResult.trim().split("\n").filter(Boolean).forEach(line => {
           const parts = line.split("\t");
@@ -152,7 +154,7 @@ export function setupGitHandlers(socket) {
         const stats = diffStats[filePath] || { added: 0, deleted: 0 };
         if (status === "?") {
           try {
-            const fullPath = path.join(repoPath, filePath);
+            const fullPath = path.join(gitRoot, filePath);
             if (fs.existsSync(fullPath) && !isBinaryFile(filePath) && !isSensitivePath(fullPath)) {
               const content = fs.readFileSync(fullPath, "utf-8");
               stats.added = content.split("\n").length;
@@ -161,10 +163,10 @@ export function setupGitHandlers(socket) {
           } catch {}
         }
 
-        files.push({ status, path: filePath, added: stats.added, deleted: stats.deleted });
+        files.push({ status, path: filePath, file: filePath, added: stats.added, deleted: stats.deleted });
       }
 
-      callback({ success: true, files });
+      callback({ success: true, files, gitRoot });
     } catch {
       callback({ success: false, error: "Not a git repository or git not available" });
     }

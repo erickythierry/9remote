@@ -46,7 +46,7 @@ export default function DiffView({ diffPath, workspace, fileBus, compact = false
   }
 
   return (
-    <div className={`h-full overflow-auto ${compact ? "p-0" : "p-2 sm:p-3"}`}>
+    <div className={`h-full overflow-auto bg-editor-bg ${compact ? "p-0" : "p-2 sm:p-3"}`}>
       {error && (
         <div className="bg-red-500/20 border border-red-500/50 rounded px-4 py-2 text-red-400 text-sm mb-3">{error}</div>
       )}

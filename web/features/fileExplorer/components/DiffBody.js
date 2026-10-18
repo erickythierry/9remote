@@ -48,13 +48,13 @@ export default function DiffBody({ diff, compact = false, className = "" }) {
     return (
       <div
         ref={containerRef}
-        className={`diff-themed ${compact ? "diff-themed-compact" : "bg-surface rounded"} overflow-hidden text-sm ${className}`}
+        className={`diff-themed bg-editor-bg ${compact ? "diff-themed-compact" : "rounded"} overflow-hidden text-sm ${className}`}
       />
     );
   }
 
   return (
-    <div className={`w-full max-w-full overflow-hidden font-mono leading-[1.6] ${compact ? "text-[10px] leading-[1.45]" : "rounded-lg border border-border bg-surface text-[12.5px]"} ${className}`}>
+    <div className={`w-full max-w-full min-h-full bg-editor-bg overflow-hidden font-mono leading-[1.6] ${compact ? "text-[10px] leading-[1.45]" : "rounded-lg border border-border text-[12.5px]"} ${className}`}>
       {rows.map((row, i) => {
         if (row.type === "file") {
           return <div key={i} className="px-3 py-2 bg-surface-2 text-text font-semibold break-all">{row.text}</div>;
@@ -67,16 +67,16 @@ export default function DiffBody({ diff, compact = false, className = "" }) {
         // contrast in both light and dark.
         const bg = row.type === "add"
           ? "bg-[rgba(var(--success-rgb),0.14)]"
-          : row.type === "del" ? "bg-[rgba(var(--danger-rgb),0.14)]" : "";
+          : row.type === "del" ? "bg-[rgba(var(--danger-rgb),0.14)]" : "bg-editor-bg";
         const signColor = row.type === "add"
           ? "text-[var(--success)]"
           : row.type === "del" ? "text-[var(--danger)]" : "text-text-subtle";
         const sign = row.type === "add" ? "+" : row.type === "del" ? "-" : " ";
         return (
           <div key={i} className={`flex ${bg}`}>
-            <span className="shrink-0 w-9 px-1 text-right text-text-subtle bg-black/5 select-none">{gutter}</span>
+            <span className="shrink-0 w-9 px-1 text-right text-text-subtle bg-black/10 select-none">{gutter}</span>
             <span className={`shrink-0 w-4 text-center font-bold ${signColor} select-none`}>{sign}</span>
-            <span className="flex-1 min-w-0 pr-2 whitespace-pre-wrap break-words text-text">{row.text || " "}</span>
+            <span className="flex-1 min-w-0 pr-2 whitespace-pre-wrap break-words text-text">{row.text || " "}</span>
           </div>
         );
       })}
