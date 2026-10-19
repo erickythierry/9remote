@@ -1119,7 +1119,7 @@ export default function WorkspaceLayout({ children }) {
         {!isDesktop && currentView.type === "git" && (
           <div className="absolute inset-0 z-30 transition-all duration-300 ease-out">
             <GitPanel
-              workspace={currentView.workspace}
+              workspace={currentView.workspace || [...viewStack].reverse().find((v) => v.type === "files")?.workspace || workspaces.find((w) => w.id === activeWorkspaceId)?.path}
               fileBus={fileBus}
               onBack={popView}
               onOpenFile={handleOpenFile}

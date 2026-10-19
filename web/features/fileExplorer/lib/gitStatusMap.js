@@ -44,7 +44,11 @@ export function buildGitStatusMap(result, prefix = "", stripPrefix = "") {
  */
 export async function buildWorkspaceGitStatus(fileBus, workspace) {
   const root = await fileBus.gitStatus(workspace);
+  let rootMap = {};
+  let rootHasGit = false;
+
   if (root?.success) {
+    rootHasGit = true;
     const gitRoot = root.gitRoot || root.repoRoot;
     let stripPrefix = "";
     if (gitRoot && workspace) {
@@ -54,23 +58,30 @@ export async function buildWorkspaceGitStatus(fileBus, workspace) {
         stripPrefix = normWs.slice(normRoot.length + 1) + "/";
       }
     }
-    return { hasGit: true, map: buildGitStatusMap(root, "", stripPrefix) };
+    rootMap = buildGitStatusMap(root, "", stripPrefix);
   }
 
   const scan = await fileBus.gitScanRepos?.(workspace, REPO_SCAN.maxDepth);
   const repos = (scan?.success ? scan.repos : []) || [];
-  const maps = await Promise.all(repos.map(async (repo) => {
+  const nested = repos.filter((r) => r.path !== workspace && r.relPath);
+
+  if (!nested.length) {
+    return { hasGit: rootHasGit, map: rootMap };
+  }
+
+  const maps = await Promise.all(nested.map(async (repo) => {
     // Windows hosts send relPath with backslashes; map keys are forward-slash.
     const rel = String(repo.relPath || "").replace(/\\/g, "/").replace(/\/+$/, "");
-    if (!rel) return null; // the root itself — already tried and failed above
+    if (!rel) return null;
     const res = await fileBus.gitStatus(repo.path);
     if (!res?.success) return null;
     const map = buildGitStatusMap(res, `${rel}/`);
     if (Object.keys(map).length) map[rel] ||= "folder-changed";
     return map;
   }));
-  const merged = Object.assign({}, ...maps.filter(Boolean));
-  return { hasGit: maps.some(Boolean), map: merged };
+
+  const merged = Object.assign({}, rootMap, ...maps.filter(Boolean));
+  return { hasGit: rootHasGit || maps.some(Boolean), map: merged };
 }
 
 /**

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { addRecentWorkspace, getRecentWorkspaces, updateRecentWorkspacePath } from "@/features/fileExplorer/components/WorkspaceList";
+import { isDiffPath, parseRepoDiffPath } from "../constants/fileExplorer.js";
 
 // File/git/browse navigation between views: opening the files view at the right cwd,
 // workspace selection (recent workspaces), folder browsing, the mobile editor overlay,
@@ -76,6 +77,15 @@ export function useWorkspaceFileNav({
   const handleOpenFile = useCallback((filePath, folderPath, opts = {}) => {
     // Mobile: render the editor as an overlay above the current view (no viewStack push)
     if (!isDesktop) {
+      if (isDiffPath(filePath)) {
+        const { status, repoPath, filePath: relPath } = parseRepoDiffPath(filePath);
+        setMobileEditor({
+          path: repoPath ? `${repoPath}/${relPath}` : relPath,
+          workspace: repoPath || currentView.workspace,
+          diffStatus: status
+        });
+        return;
+      }
       setMobileEditor({ path: filePath, line: opts.line, column: opts.column, workspace: currentView.workspace });
       return;
     }
@@ -84,9 +94,9 @@ export function useWorkspaceFileNav({
   }, [isDesktop, currentView.workspace]);
 
   const handleOpenGit = useCallback(() => {
-    const filesView = viewStack.find(v => v.type === "files");
-    if (filesView?.workspace) pushView({ type: "git", workspace: filesView.workspace });
-  }, [pushView, viewStack]);
+    const ws = currentView.workspace || [...viewStack].reverse().find(v => v.type === "files")?.workspace;
+    if (ws) pushView({ type: "git", workspace: ws });
+  }, [pushView, viewStack, currentView.workspace]);
 
   const handleSetWorkspace = useCallback((workspacePath) => {
     // Replace browse/workspaces/files views so Back doesn't revisit the browse selector
