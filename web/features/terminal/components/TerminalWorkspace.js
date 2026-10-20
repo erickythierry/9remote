@@ -236,7 +236,7 @@ function TerminalWorkspace({
     setRightPanelRoot(baseRoot, null);
   }, [activeSessionId, baseRoot, setRightPanelRoot]);
   // Opening (or watching) a finished chat is reading it: drop its "done" badge. The store skips blocked.
-  const activeDone = sessionStatus?.[activeSessionId]?.state === "done";
+  const activeDone = useSessionStatus(activeSessionId) === "done";
   useEffect(() => {
     if (!activeDone || document.hidden) return;
     useNotificationStore.getState().clearNotification(activeSessionId);
