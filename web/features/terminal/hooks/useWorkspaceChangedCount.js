@@ -13,8 +13,10 @@ const entries = new Map(); // rootPath → { state, stop, refs, subs, fileBus }
 const EMPTY = { count: 0, perRepo: {}, syncPerRepo: {} };
 
 function fetchOnce(entry, rootPath, force, fetch) {
+  const seq = ++entry.seq;
   entry.fileBus?.gitWorkspaceChangedCount?.(rootPath, REPO_SCAN.maxDepth, force, fetch).then((res) => {
-    if (!res?.success) return;
+    // A slower, older reply must not overwrite a newer one (poll racing a forced refresh).
+    if (!res?.success || seq !== entry.seq) return;
     entry.state = { count: res.count || 0, perRepo: res.perRepo || {}, syncPerRepo: res.syncPerRepo || {} };
     entry.subs.forEach((fn) => fn(entry.state));
   });
@@ -23,7 +25,7 @@ function fetchOnce(entry, rootPath, force, fetch) {
 function acquire(rootPath, fileBus) {
   let entry = entries.get(rootPath);
   if (!entry) {
-    entry = { state: EMPTY, stop: null, refs: 0, subs: new Set(), fileBus };
+    entry = { state: EMPTY, stop: null, seq: 0, refs: 0, subs: new Set(), fileBus };
     entries.set(rootPath, entry);
     fetchOnce(entry, rootPath);
     entry.stop = pollWhileVisible(() => fetchOnce(entry, rootPath), WORKSPACE_GIT_POLL_MS);

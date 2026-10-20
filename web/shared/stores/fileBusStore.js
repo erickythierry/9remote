@@ -82,10 +82,10 @@ export function makeFileBus(getBus, getProtocol = () => null, getLiveBus = getBu
     bus.emit("gitStatus", { repoPath }, normResolve(resolve));
   }),
 
-  gitChangedCount: (repoPath) => new Promise((resolve) => {
+  gitChangedCount: (repoPath, force) => new Promise((resolve) => {
     const bus = getBus();
     if (!bus) return resolve({ success: false, error: "Not connected" });
-    bus.emit("gitChangedCount", { repoPath }, resolve);
+    bus.emit("gitChangedCount", { repoPath, force }, resolve);
   }),
 
   gitFileStatus: (repoPath, filePath) => new Promise((resolve) => {
