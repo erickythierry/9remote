@@ -7,7 +7,7 @@ import { vibrate } from "@/shared/utils/vibration";
 import { useAiStore } from "@/shared/stores/aiStore";
 import { findTaskTool } from "../../lib/toolTree";
 import { taskElapsedMs } from "../../lib/harnessTasks";
-import { clockText } from "../../lib/taskClock";
+import { clockText, taskStartTime } from "../../lib/taskClock";
 import { MessageBubble } from "../MessageBubble";
 import { AiTurn } from "../AiTurn";
 import { renderToolCard } from "../cards/toolCards";
@@ -77,13 +77,18 @@ export const AgentTaskModal = memo(function AgentTaskModal({
   if (!task) return null;
   const elapsed = taskElapsedMs(task, now);
   const running = !task.endedAt && (task.status === "running" || task.status === "paused");
+  const started = taskStartTime(task);
 
   return (
     <ModalShell
       icon={<TaskIcon background={task.background} engine={engine} size={16} />}
       iconClass=""
       title={task.description || task.subagentType || "Task"}
-      subtitle={running ? `Running for ${clockText(elapsed)}` : `Ended · ${clockText(elapsed)}`}
+      subtitle={
+        started
+          ? (running ? `Started ${started} · Running for ${clockText(elapsed)}` : `Started ${started} · Ended · ${clockText(elapsed)}`)
+          : (running ? `Running for ${clockText(elapsed)}` : `Ended · ${clockText(elapsed)}`)
+      }
       onClose={onClose}
       actions={running && task.taskId && onStopTask ? (
         <button
@@ -102,11 +107,14 @@ export const AgentTaskModal = memo(function AgentTaskModal({
         <div className="px-4 py-2 border-b border-border-subtle bg-bg flex items-center gap-1 overflow-x-auto custom-scrollbar shrink-0">
           {live.map((t, i) => {
             const on = t.taskId === task.taskId;
+            const tStarted = taskStartTime(t);
+            const statusOrDuration = t.status === "running" ? clockText(taskElapsedMs(t, now)) : t.status;
             return (
               <button
                 key={t.taskId || t.id || i}
                 type="button"
                 onClick={() => { vibrate(); setPicked(t.taskId); }}
+                title={tStarted ? `${t.description || t.subagentType || t.taskId} (started ${tStarted})` : (t.description || t.subagentType || t.taskId)}
                 className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-brand text-xs transition-colors ${
                   on
                     ? "bg-surface-2 text-text font-medium"
@@ -117,8 +125,8 @@ export const AgentTaskModal = memo(function AgentTaskModal({
                 <span className="truncate max-w-[140px]">
                   {t.description || t.subagentType || t.taskId}
                 </span>
-                <span className="font-mono text-[10px] opacity-60 tabular-nums">
-                  {t.status === "running" ? clockText(taskElapsedMs(t, now)) : t.status}
+                <span className="font-mono text-[10px] opacity-60 tabular-nums shrink-0">
+                  {tStarted ? `${tStarted} · ${statusOrDuration}` : statusOrDuration}
                 </span>
               </button>
             );

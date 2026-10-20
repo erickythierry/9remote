@@ -7,7 +7,7 @@ import { reduceSessionEvents } from "../features/ai/hooks/useAiSession.js";
 import { useAiStore } from "../shared/stores/aiStore.js";
 import { runningAsync, taskActivity } from "../features/ai/lib/toolTree.js";
 import { describeActivity } from "../features/ai/lib/liveStatus.js";
-import { clockText } from "../features/ai/lib/taskClock.js";
+import { clockText, taskStartTime } from "../features/ai/lib/taskClock.js";
 
 let pass = 0, fail = 0;
 const test = (name, fn) => {
@@ -439,6 +439,17 @@ test("the clock reads in the units a reader is watching", () => {
   assert.equal(clockText(9_400), "9s");
   assert.equal(clockText(64_000), "1m 04s");
   assert.equal(clockText(3_720_000), "1h 02m");
+});
+
+test("taskStartTime formats creation timestamp as local time string", () => {
+  assert.equal(taskStartTime(null), "");
+  assert.equal(taskStartTime({}), "");
+  assert.equal(taskStartTime({ startedAt: "invalid" }), "");
+  const d = new Date(2026, 9, 19, 14, 30, 15);
+  const time = taskStartTime({ startedAt: d.getTime() });
+  assert.equal(time, d.toLocaleTimeString([], { hour12: false }));
+  const endedUsage = taskStartTime({ endedAt: d.getTime() + 5000, usage: { duration_ms: 5000 } });
+  assert.equal(endedUsage, d.toLocaleTimeString([], { hour12: false }));
 });
 
 test("a later init with no model does not wipe the model the pane is showing", () => {

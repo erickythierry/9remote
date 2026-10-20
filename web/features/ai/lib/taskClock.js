@@ -15,5 +15,18 @@ export function clockText(ms) {
   return `${s}s`;
 }
 
+/** Formats task creation timestamp as local time (e.g. "14:35:10"). */
+export function taskStartTime(task) {
+  const ts = task?.startedAt || task?.createdAt || (task?.endedAt && task?.usage?.duration_ms ? task.endedAt - task.usage.duration_ms : null);
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  try {
+    return d.toLocaleTimeString([], { hour12: false });
+  } catch {
+    return "";
+  }
+}
+
 /** The CLI reports task usage in ms; the modal prints it as a span, not a count. */
 export const usageDurationMs = (usage) => Number(usage?.duration_ms) || 0;
