@@ -6,7 +6,8 @@ import { X, ImageOff, Loader2, Plus } from "@/shared/components/ui/Icon";
 import { vibrate } from "@/shared/utils/vibration";
 import { useI18n } from "@/shared/i18n";
 import { useTerminalStore } from "@/shared/stores/terminalStore";
-import { TERMINAL_BACKGROUNDS, TERMINAL_BG_ALPHA, TERMINAL_BG_OPACITY, TERMINAL_BG_PREVIEW_ALPHA, resolvableBackgroundKeys, DESKTOP_BREAKPOINT } from "@/features/terminal/constants/terminalConfig";
+import { TERMINAL_BACKGROUNDS, TERMINAL_BG_ALPHA, TERMINAL_BG_OPACITY, TERMINAL_BG_PREVIEW_ALPHA, resolvableBackgroundKeys, colorBgValue, DESKTOP_BREAKPOINT } from "@/features/terminal/constants/terminalConfig";
+import BackgroundColorTile from "@/features/terminal/components/BackgroundColorTile";
 import useBackgroundPicker from "@/features/terminal/hooks/useBackgroundPicker";
 
 // Wallpaper-style picker sheet for the mobile terminal background. Tiles are
@@ -55,6 +56,14 @@ export default function BackgroundPickerSheet({ isOpen, onClose, busRef, inline 
     setKeys(keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]);
   };
 
+  // Colors live only as pool keys: a new pick swaps the previous drag step in place.
+  const pickColor = (key, prev) => {
+    const { terminalBackgrounds: keys, setTerminalBackgrounds: setKeys } = useTerminalStore.getState();
+    if (keys.includes(key)) return;
+    const i = prev ? keys.indexOf(prev) : -1;
+    setKeys(i === -1 ? [...keys, key] : keys.map((k, n) => (n === i ? key : k)));
+  };
+
   // Send the picked image to the agent — it compresses/stores, then we add the
   // returned item to the list and select it at the end of the pool.
   const deleteBackground = (id) => {
@@ -82,6 +91,7 @@ export default function BackgroundPickerSheet({ isOpen, onClose, busRef, inline 
   // Shared tile markup — called (not used as a component) so React sees a stable
   // <button> type and the images don't remount on every render.
   const renderTile = (key, label, src) => {
+    const color = colorBgValue(key);
     const isNone = key === "none";
     const order = isNone ? -1 : activeKeys.indexOf(key);
     const selected = isNone ? activeKeys.length === 0 : order !== -1;
@@ -90,7 +100,12 @@ export default function BackgroundPickerSheet({ isOpen, onClose, busRef, inline 
         onClick={() => toggleBackground(key)}
         className="group relative block w-full aspect-[9/16] rounded-2xl overflow-hidden transition-transform duration-200 ease-out active:scale-[0.97] shadow-sm"
       >
-        {src ? (
+        {color ? (
+          <>
+            <span className="absolute inset-0" style={{ background: color }} />
+            <span className="absolute bottom-2 left-0 right-0 px-2 text-xs font-medium text-white truncate mix-blend-difference">{label}</span>
+          </>
+        ) : src ? (
           <>
             <img
               src={src}
@@ -135,6 +150,10 @@ export default function BackgroundPickerSheet({ isOpen, onClose, busRef, inline 
         </div>
       ))}
 
+      {activeKeys.filter(colorBgValue).map((key) => (
+        <div key={key}>{renderTile(key, colorBgValue(key))}</div>
+      ))}
+
       {customBackgrounds.map((it) => (
         <div key={`custom:${it.id}`} className="relative">
           {renderTile(`custom:${it.id}`, t("menu.bgCustomLabel"), it.dataUrl)}
@@ -147,6 +166,8 @@ export default function BackgroundPickerSheet({ isOpen, onClose, busRef, inline 
           </button>
         </div>
       ))}
+
+      <BackgroundColorTile label={t("menu.bgColor")} onPick={pickColor} />
 
       {/* Add tile — last in the grid, picks a new image from the device */}
       <button

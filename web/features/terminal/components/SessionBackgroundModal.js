@@ -6,7 +6,8 @@ import { useTerminalStore } from "@/shared/stores/terminalStore";
 import { useI18n } from "@/shared/i18n";
 import { vibrate } from "@/shared/utils/vibration";
 import { X, ImageOff, Loader2, Plus } from "@/shared/components/ui/Icon";
-import { TERMINAL_BACKGROUNDS, TERMINAL_BG_ALPHA, TERMINAL_BG_OPACITY, TERMINAL_BG_PREVIEW_ALPHA, resolvableBackgroundKeys } from "@/features/terminal/constants/terminalConfig";
+import { TERMINAL_BACKGROUNDS, TERMINAL_BG_ALPHA, TERMINAL_BG_OPACITY, TERMINAL_BG_PREVIEW_ALPHA, resolvableBackgroundKeys, colorBgValue } from "@/features/terminal/constants/terminalConfig";
+import BackgroundColorTile from "@/features/terminal/components/BackgroundColorTile";
 import useBackgroundPicker from "@/features/terminal/hooks/useBackgroundPicker";
 
 const NONE_KEY = "none";
@@ -45,17 +46,26 @@ export default function SessionBackgroundModal({ sessionId, title, onClose, busR
     setPool(poolKeys.includes(key) ? poolKeys.filter((k) => k !== key) : [...poolKeys, key]);
   };
 
+  // Same drag-step swap as the settings sheet; single-pick pins to this terminal live.
+  const pickColor = (key, prev) => {
+    if (!applyAll) { setSessionBackground(sessionId, key); return; }
+    if (poolKeys.includes(key)) return;
+    const i = prev ? poolKeys.indexOf(prev) : -1;
+    setPool(i === -1 ? [...poolKeys, key] : poolKeys.map((k, n) => (n === i ? key : k)));
+  };
+
   const selected = current ?? null;
   // None leads (it drops the override), own uploads next, presets scroll under them
   const tiles = [
     { key: NONE_KEY, label: TERMINAL_BACKGROUNDS.none.label },
+    ...[...new Set([...poolKeys, selected])].filter(colorBgValue).map((key) => ({ key, label: colorBgValue(key), color: colorBgValue(key) })),
     ...customBackgrounds.map((it) => ({ key: `custom:${it.id}`, label: t("menu.bgCustomLabel"), src: it.dataUrl })),
     ...Object.entries(TERMINAL_BACKGROUNDS)
       .filter(([key]) => key !== NONE_KEY)
       .map(([key, preset]) => ({ key, label: preset.label, src: preset.src }))
   ];
 
-  const renderTile = ({ key, label, src }) => {
+  const renderTile = ({ key, label, src, color }) => {
     const isNone = key === NONE_KEY;
     const order = isNone ? -1 : poolKeys.indexOf(key);
     const isSelected = applyAll ? (isNone ? poolKeys.length === 0 : order !== -1) : selected === key;
@@ -68,7 +78,12 @@ export default function SessionBackgroundModal({ sessionId, title, onClose, busR
           isSelected ? "" : "hover:-translate-y-0.5"
         }`}
       >
-        {src ? (
+        {color ? (
+          <>
+            <span className="absolute inset-0" style={{ background: color }} />
+            <span className="absolute bottom-1.5 inset-x-0 px-2 text-[11px] font-medium text-white truncate text-center mix-blend-difference">{label}</span>
+          </>
+        ) : src ? (
           <img
             src={src}
             alt={label}
@@ -129,7 +144,10 @@ export default function SessionBackgroundModal({ sessionId, title, onClose, busR
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto modal-scrollable px-4 py-4">
-          <div className="grid grid-cols-3 gap-3">{tiles.map(renderTile)}</div>
+          <div className="grid grid-cols-3 gap-3">
+            {tiles.map(renderTile)}
+            <BackgroundColorTile label={t("menu.bgColor")} onPick={pickColor} />
+          </div>
         </div>
 
         {/* Dim is global — one veil value for every pane, not per session */}

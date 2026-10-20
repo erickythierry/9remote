@@ -18,7 +18,7 @@ import { useI18n } from "@/shared/i18n";
 import { useTheme } from "@/shared/theme/ThemeProvider";
 import { dotClassName, statusVisual } from "@/shared/utils/statusVisual";
 import { STATUS_BAR_HEIGHT } from "@/shared/constants/layout";
-import { MAX_CHANGED_BADGE, DESKTOP_BREAKPOINT, TERMINAL_BG_ALPHA, TERMINAL_BG_VEIL_RGB, TERMINAL_BG_LIFT_RGB, TERMINAL_BG_LIFT, backgroundSrc, resolvePaneBackground } from "@/features/terminal/constants/terminalConfig";
+import { MAX_CHANGED_BADGE, DESKTOP_BREAKPOINT, TERMINAL_BG_ALPHA, TERMINAL_BG_VEIL_RGB, TERMINAL_BG_LIFT_RGB, TERMINAL_BG_LIFT, backgroundSrc, colorBgValue, resolvePaneBackground } from "@/features/terminal/constants/terminalConfig";
 import { makePanePointerHandlers } from "@/shared/utils/paneActivation";
 
 // Floating quick-action circles at the pane's top-right: thumb-sized on touch,
@@ -105,10 +105,11 @@ function TerminalPane({
   // key is published to useXTerm only when the image actually renders — otherwise
   // the canvas would go transparent over nothing and paint black.
   const bgSrc = backgroundSrc(paneBgKey, customBackgrounds);
+  const bgColor = colorBgValue(paneBgKey);
 
   const { termRef, cwdRef, cwd, termReady, joining, doResize, reload, focus, stopMomentum, historyFetching } = useXTerm({
     bus: activeBus, sessionId, theme, terminalTheme, isVisible, isFocused, containerRef, mountDelay,
-    bgKey: bgSrc ? paneBgKey : "none",
+    bgKey: bgSrc || bgColor ? paneBgKey : "none",
     onInput: handleClear,
     onSelectionMade: (text, pos) => setSelection({ text, x: pos.x, y: pos.y }),
   });
@@ -285,11 +286,11 @@ function TerminalPane({
 
   return (
     <div
-      className={`h-full w-full flex flex-col overflow-hidden relative touch-none px-1.5 py-1.5 ${focusClass}${bgSrc ? " terminal-has-bg" : ""}`}
+      className={`h-full w-full flex flex-col overflow-hidden relative touch-none px-1.5 py-1.5 ${focusClass}${bgSrc || bgColor ? " terminal-has-bg" : ""}`}
       style={bgSrc ? {
         background: `linear-gradient(${veil},${veil}), linear-gradient(${lift},${lift}), center / cover no-repeat url("${bgSrc}")`,
         backgroundBlendMode: "normal, screen, normal"
-      } : { background: currentTheme.background }}
+      } : { background: bgColor || currentTheme.background }}
       onMouseDown={panePointer.onMouseDown}
       onTouchStart={panePointer.onTouchStart}
     >

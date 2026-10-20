@@ -156,8 +156,14 @@ export const TERMINAL_BACKGROUNDS = {
 // Sets canvas background transparent so pane veil layers show through.
 export function applyTerminalBackground(xtermTheme, bgKey) {
   if (!xtermTheme || !bgKey || bgKey === "none") return xtermTheme;
-  if (!TERMINAL_BACKGROUNDS[bgKey] && !String(bgKey).startsWith("custom")) return xtermTheme;
+  if (!TERMINAL_BACKGROUNDS[bgKey] && !String(bgKey).startsWith("custom") && !colorBgValue(bgKey)) return xtermTheme;
   return { ...xtermTheme, background: `${TERMINAL_BG_DARK}00` };
+}
+
+const COLOR_BG_RE = /^color:(#[0-9a-f]{6})$/i;
+
+export function colorBgValue(bgKey) {
+  return typeof bgKey === "string" ? COLOR_BG_RE.exec(bgKey)?.[1] || null : null;
 }
 
 export function customBgId(bgKey) {
@@ -172,7 +178,7 @@ export function backgroundSrc(bgKey, customItems = []) {
 }
 
 export function backgroundLabel(bgKey) {
-  return TERMINAL_BACKGROUNDS[bgKey]?.label || (customBgId(bgKey) ? "Custom" : TERMINAL_BACKGROUNDS.none.label);
+  return TERMINAL_BACKGROUNDS[bgKey]?.label || colorBgValue(bgKey) || (customBgId(bgKey) ? "Custom" : TERMINAL_BACKGROUNDS.none.label);
 }
 
 export const BG_LIST_TIMEOUT_MS = 4000;
@@ -188,7 +194,7 @@ export function resolvableBackgroundKeys(keys, customItems = []) {
   return keys.filter((k) => {
     const id = customBgId(k);
     if (id) return customItems.some((it) => it?.id === id);
-    return k === "none" || !!TERMINAL_BACKGROUNDS[k];
+    return k === "none" || !!TERMINAL_BACKGROUNDS[k] || !!colorBgValue(k);
   });
 }
 

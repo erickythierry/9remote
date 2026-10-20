@@ -174,6 +174,7 @@ export default {
     terminalBackground: "Background",
     bgDim: "Background dim",
     bgApplyAll: "Apply to all",
+    bgColor: "Color",
     bgUrlPlaceholder: "Image URL (https://…)",
     bgSave: "Save",
     bgSaveFailed: "Could not save background",

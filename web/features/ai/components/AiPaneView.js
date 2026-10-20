@@ -38,6 +38,7 @@ import { useGitChangedCount } from "@/features/terminal/hooks/useGitChangedCount
 import { vibrate } from "@/shared/utils/vibration";
 import {
   backgroundSrc,
+  colorBgValue,
   resolvePaneBackground,
   effectiveFontSize,
   MAX_CHANGED_BADGE,
@@ -145,7 +146,8 @@ export const AiPaneView = memo(function AiPaneView({
         backgroundBlendMode: "luminosity, normal, screen, normal"
       };
     }
-    return { background: `${dotGrid}, ${palette.background}` };
+    const bgColor = theme === "dark" ? colorBgValue(paneBgKey) : null;
+    return { background: `${dotGrid}, ${bgColor || palette.background}` };
   }, [terminalBackgrounds, sessionBgKey, customBackgrounds, terminalBackgroundOpacity, palette, theme, bgIndex]);
 
   const skills = metadata.skills || [];
