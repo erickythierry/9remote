@@ -3,8 +3,8 @@ import path from "node:path";
 import spawn from "cross-spawn"; // Windows: exec npm .cmd shims the doctor commands live in
 import { AI_ENGINES, AI_TURN_IDLE_TIMEOUT_MS, AI_ASYNC_IDLE_TIMEOUT_MS, AI_DOCTOR_TIMEOUT_MS, AI_PERSIST_DEBOUNCE_MS, AI_PERSIST_STREAM_MS, AI_MAX_EVENTS, AI_MAX_TOOL_OUTPUT, AI_TASK_RECORDS_BYTES, IDLE_KILL_ENGINES, AI_IDLE_KILL_MS, AI_VETO_MAX_MS } from "./constants.js";
 import { getExtendedEnv } from "./adapters/env.js";
-import { recoverFromTranscript } from "./transcript.js";
-import { readClaudeSessionState, readNewAttachments } from "./claudeTranscript.js";
+import { recoverBundleFromTranscript } from "./transcript.js";
+import { readNewAttachments } from "./claudeTranscript.js";
 import { readThreadGoal } from "./goal.js";
 import { getEngineDef, isManagedEngine, doctorSpecOf } from "./adapters/index.js";
 import { DaemonProc } from "./proc/daemonProc.js";
@@ -297,10 +297,13 @@ export class AiSession {
     this.cliSessionId = engine === AI_ENGINES.CODEX ? null : bindId;
     // Rebuilt from the CLI's own store below — the snapshot no longer carries the log.
     this.history = [];
-    // Merged, not overwritten — a rebuild cannot reproduce the harness's own task records.
+    // One read of the store answers both the log and the harness's own session state —
+    // they look at the same file, and reading it twice parsed the same records twice.
+    let restoredState = null;
     if (bindId) {
       const rebuilt = this._rebuildFromStore(bindId);
-      if (rebuilt) this.history = mergeCarried(cliEventsOf(this.history), rebuilt);
+      restoredState = rebuilt.state;
+      if (rebuilt.events) this.history = mergeCarried(cliEventsOf(this.history), rebuilt.events);
     }
     // Restored async rows have no live watchdog left; settle them or they spin forever.
     this._settleRestoredAsync();
@@ -324,17 +327,15 @@ export class AiSession {
     // Any event bumps this; idle-kill only fires past AI_IDLE_KILL_MS of silence.
     this.lastActivityAt = Date.now();
     // The harness's own transcript records beat 9Remote's reconstruction — override, not merge.
-    if (this.engine === AI_ENGINES.CLAUDE && bindId) {
-      const state = readClaudeSessionState(this.cwd, bindId);
-      if (state) {
-        if (state.permissionMode) this.permissionMode = state.permissionMode;
-        if (state.lastPrompt) this.lastPrompt = state.lastPrompt;
-        // NOT state.cwd: the transcript's cwd is where the CLI started; this.cwd is where its process runs.
-        if (state.cwd) this.harnessCwd = state.cwd;
-        if (state.isWorktree) this.isWorktree = true;
-        // The harness's own title, for the history list and terminals that follow the chat's name.
-        if (state.title) this.harnessTitle = state.title;
-      }
+    if (this.engine === AI_ENGINES.CLAUDE && restoredState) {
+      const state = restoredState;
+      if (state.permissionMode) this.permissionMode = state.permissionMode;
+      if (state.lastPrompt) this.lastPrompt = state.lastPrompt;
+      // NOT state.cwd: the transcript's cwd is where the CLI started; this.cwd is where its process runs.
+      if (state.cwd) this.harnessCwd = state.cwd;
+      if (state.isWorktree) this.isWorktree = true;
+      // The harness's own title, for the history list and terminals that follow the chat's name.
+      if (state.title) this.harnessTitle = state.title;
     }
     // Discovered at connect time by aiSocket; kept so a cleared log can be re-seeded.
     this.skills = [];
@@ -590,17 +591,24 @@ export class AiSession {
     this.consumedEpoch = this.proc?.epoch ?? null;
   }
 
-  // The one place a transcript becomes a log — the transcript is the authority, so always rebuild instead of testing whether the log looks thin.
+  // The one place a transcript becomes a log — the transcript is the authority, so always
+  // rebuild instead of testing whether the log looks thin. It also answers the harness's
+  // session state: both readers look at the same file, and reading it twice parsed the
+  // same records twice.
   _rebuildFromStore(sessionId, leafOverride = null) {
     // The id reaches argv and the filesystem; each reader validates it (see RESUME_ID_RE).
-    const recovered = recoverFromTranscript(this.engine, this.cwd, sessionId, leafOverride);
-    return recovered?.length ? renumber(capLog(recovered)) : null;
+    const bundle = recoverBundleFromTranscript(this.engine, this.cwd, sessionId, leafOverride);
+    if (!bundle) return { events: null, state: null };
+    return {
+      events: bundle.events?.length ? renumber(capLog(bundle.events)) : null,
+      state: bundle.state || null
+    };
   }
 
   // Rebuild and reset every client before the hydrate is answered, so the ack's window covers everything.
   refreshFromStore() {
     if (!this.cliSessionId) return false;
-    const log = this._rebuildFromStore(this.cliSessionId);
+    const { events: log } = this._rebuildFromStore(this.cliSessionId);
     if (!log) return false;
     this._adoptLog(log);
     return true;
@@ -610,7 +618,7 @@ export class AiSession {
   reloadFromStore(leafOverride = null) {
     if (!this.cliSessionId) return false;
     // Without leafOverride the file is read in the ~50ms before the CLI writes the new pointer, so the pre-cut branch comes back.
-    const log = this._rebuildFromStore(this.cliSessionId, leafOverride);
+    const { events: log } = this._rebuildFromStore(this.cliSessionId, leafOverride);
     if (!log) return false;
     this._adoptLog(log);
     return true;
@@ -1231,7 +1239,7 @@ export class AiSession {
       else if (this.engine === AI_ENGINES.PI) this.cliSessionId = resume;
       // Replace the log with the resumed conversation's tail; the old transcript's byte offset goes with it.
       this.attachmentOffset = null;
-      this._adoptLog(this._rebuildFromStore(resume) || []);
+      this._adoptLog(this._rebuildFromStore(resume).events || []);
       // The old conversation's turn span goes with it.
       this.turnStartedAt = 0;
       this.lastTurnMs = 0;
