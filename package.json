@@ -12,7 +12,7 @@
   "scripts": {
     "host:dev": "npm run dev --workspace=host",
     "host:dev:server": "npm run dev:server --workspace=host",
-    "host:build": "node scripts/syncVersion.js && node scripts/buildPkg.js",
+    "host:build": "SELF_HOSTED=1 node scripts/syncVersion.js && SELF_HOSTED=1 node scripts/buildPkg.js",
     "host:sync": "node scripts/syncVersion.js && NO_PACK=1 node scripts/buildPkg.js && node scripts/syncLocalAgent.mjs",
     "host:publish": "npm run host:build && cd host && npm publish",
     "host:publish:local": "npm run host:build && cd host && npm publish --registry http://localhost:4873",
