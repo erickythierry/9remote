@@ -235,6 +235,12 @@ function TerminalWorkspace({
   useEffect(() => {
     setRightPanelRoot(baseRoot, null);
   }, [activeSessionId, baseRoot, setRightPanelRoot]);
+  // Opening (or watching) a finished chat is reading it: drop its "done" badge. The store skips blocked.
+  const activeDone = sessionStatus?.[activeSessionId]?.state === "done";
+  useEffect(() => {
+    if (!activeDone || document.hidden) return;
+    useNotificationStore.getState().clearNotification(activeSessionId);
+  }, [activeSessionId, activeDone]);
   const showEmptyState = !sessions.length;
   // Exactly one host and no workspace: show the two-half poster stage (workspace/remote).
   // Multi-host skips this stage so the user sees the fleet instead.
