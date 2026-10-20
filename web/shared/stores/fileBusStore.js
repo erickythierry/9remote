@@ -181,10 +181,10 @@ export function makeFileBus(getBus, getProtocol = () => null, getLiveBus = getBu
     bus.emit("gitScanRepos", { rootPath, maxDepth, force }, resolve);
   }),
 
-  gitWorkspaceChangedCount: (rootPath, maxDepth, force) => new Promise((resolve) => {
+  gitWorkspaceChangedCount: (rootPath, maxDepth, force, fetch) => new Promise((resolve) => {
     const bus = getBus();
     if (!bus) return resolve({ success: false, error: "Not connected" });
-    bus.emit("gitWorkspaceChangedCount", { rootPath, maxDepth, force }, resolve);
+    bus.emit("gitWorkspaceChangedCount", { rootPath, maxDepth, force, fetch }, resolve);
   }),
 
   gitRefreshRepos: (rootPath) => new Promise((resolve) => {

@@ -18,6 +18,24 @@ import { findGitRoot } from "../../terminal/workspaceMigration.js";
 const GIT_COUNT_TTL_MS = 5000;
 const _countCache = new Map(); // repoPath → { ts, value, pending }
 
+const GIT_FETCH_TTL_MS = 60000;
+const GIT_FETCH_TIMEOUT_MS = 20000;
+const _fetchCache = new Map(); // repoPath → { ts, pending }
+
+// Background `git fetch` so ahead/behind sees new origin commits. Never prompts for
+// credentials (a prompt would hang until the timeout); failures are ignored, the old refs stay.
+function fetchRepoCached(repoPath, force) {
+  const cached = _fetchCache.get(repoPath);
+  if (cached?.pending) return cached.pending;
+  if (!force && cached && Date.now() - cached.ts < GIT_FETCH_TTL_MS) return Promise.resolve();
+  const pending = runGit(["fetch", "--quiet", "--no-tags"], repoPath, {
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    timeout: GIT_FETCH_TIMEOUT_MS
+  }).then(() => { _fetchCache.set(repoPath, { ts: Date.now(), pending: null }); });
+  _fetchCache.set(repoPath, { ts: cached?.ts ?? 0, pending });
+  return pending;
+}
+
 // Changed-file count for one repo, TTL-cached and de-duplicated: a spawn already in
 // flight is awaited rather than repeated.
 async function changedCountCached(repoPath, force) {
@@ -28,9 +46,14 @@ async function changedCountCached(repoPath, force) {
   if (cached?.pending) {
     try { return await cached.pending; } catch { return { success: false }; }
   }
-  const pending = runGit(["status", "--porcelain", "--no-renames", "-uall"], repoPath).then((r) => {
+  const pending = Promise.all([
+    runGit(["status", "--porcelain", "--no-renames", "-uall"], repoPath),
+    runGit(["rev-list", "--left-right", "--count", "@{u}...HEAD"], repoPath)
+  ]).then(([r, ab]) => {
+    // No upstream makes rev-list fail: leave ahead/behind at 0.
+    const [behind = 0, ahead = 0] = ab.code === 0 ? ab.stdout.trim().split(/\s+/).map((n) => parseInt(n, 10) || 0) : [];
     const value = r.code === 0
-      ? { success: true, count: r.stdout.trim() ? r.stdout.trim().split("\n").length : 0 }
+      ? { success: true, count: r.stdout.trim() ? r.stdout.trim().split("\n").length : 0, ahead, behind }
       : { success: false, error: "Not a git repository or git not available" };
     _countCache.set(repoPath, { ts: Date.now(), value, pending: null });
     return value;
@@ -57,10 +80,10 @@ function resolveGitBin() {
 }
 const GIT_BIN = resolveGitBin();
 
-export function runGit(args, cwd) {
+export function runGit(args, cwd, opts = {}) {
   return new Promise((resolve) => {
     if (!GIT_BIN) return resolve({ code: -1, stdout: "", stderr: GIT_BIN_NOT_FOUND });
-    const child = spawn(GIT_BIN, args, { cwd, windowsHide: true });
+    const child = spawn(GIT_BIN, args, { cwd, windowsHide: true, ...opts });
     let stdout = "", stderr = "";
     child.stdout.on("data", (d) => { stdout += d.toString(); });
     child.stderr.on("data", (d) => { stderr += d.toString(); });
@@ -182,20 +205,23 @@ export function setupGitHandlers(socket) {
   // One number for the whole workspace: the root repo plus every repo under it, so the
   // terminal badge and the git panel can never disagree. Shares the per-repo TTL cache
   // with gitChangedCount/gitScanRepos, so polling this costs nothing extra.
-  socket.on("gitWorkspaceChangedCount", async ({ rootPath, maxDepth, force }, callback) => {
+  socket.on("gitWorkspaceChangedCount", async ({ rootPath, maxDepth, force, fetch }, callback) => {
     if (!rootPath) return callback({ success: false, error: "rootPath required" });
     if (isSensitivePath(rootPath)) return callback({ success: false, error: "Access denied" });
     try {
       const found = scanReposCached(rootPath, maxDepth ? { maxDepth } : {});
-      const results = await Promise.all(found.map(async (repo) => [repo.path, await changedCountCached(repo.path, !!force)]));
+      if (fetch) await Promise.all(found.map((repo) => fetchRepoCached(repo.path, !!force)));
+      const results = await Promise.all(found.map(async (repo) => [repo.path, await changedCountCached(repo.path, !!force || !!fetch)]));
       const perRepo = {};
+      const syncPerRepo = {};
       let count = 0;
       for (const [repoPath, res] of results) {
         if (!res.success) continue;
         perRepo[repoPath] = res.count;
+        syncPerRepo[repoPath] = { ahead: res.ahead, behind: res.behind };
         count += res.count;
       }
-      callback({ success: true, count, perRepo });
+      callback({ success: true, count, perRepo, syncPerRepo });
     } catch (error) {
       callback({ success: false, error: error.message });
     }

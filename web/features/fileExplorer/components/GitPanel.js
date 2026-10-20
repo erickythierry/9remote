@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { ChevronRight, ChevronLeft, RefreshCw, GitFork, Loader2, GitBranch } from "@/shared/components/ui/Icon";
+import { ChevronRight, ChevronLeft, RefreshCw, GitFork, Loader2, GitBranch, ArrowUp, ArrowDown } from "@/shared/components/ui/Icon";
 import { vibrate } from "@/shared/utils/vibration";
 import { useI18n } from "@/shared/i18n";
 import { GIT_REFRESH_EVENT } from "../constants/fileExplorer.js";
 import { useWorkspaceRepos } from "@/features/terminal/hooks/useWorkspaceRepos";
-import { useWorkspaceChangedCount } from "@/features/terminal/hooks/useWorkspaceChangedCount";
+import { useWorkspaceChangedCount, refreshWorkspaceChangedCount } from "@/features/terminal/hooks/useWorkspaceChangedCount";
 import { useWorkspaceGit } from "@/features/terminal/hooks/useWorkspaceGit";
 import ScmPanel from "./ScmPanel.js";
 
@@ -14,7 +14,7 @@ export default function GitPanel({ workspace, fileBus, onBack, onOpenFile }) {
   const { t } = useI18n();
 
   const { repos, refresh: refreshRepos, scanning, deep, scanDeeper } = useWorkspaceRepos(workspace, fileBus);
-  const { perRepo: livePerRepo } = useWorkspaceChangedCount(workspace, fileBus);
+  const { perRepo: livePerRepo, syncPerRepo } = useWorkspaceChangedCount(workspace, fileBus);
   const { branch: liveBranch } = useWorkspaceGit(workspace, fileBus);
 
   // Rescan when branch changes externally
@@ -123,6 +123,8 @@ export default function GitPanel({ workspace, fileBus, onBack, onOpenFile }) {
             onClick={() => {
               vibrate();
               refreshRepos();
+              window.dispatchEvent(new Event(GIT_REFRESH_EVENT));
+              refreshWorkspaceChangedCount(workspace);
             }}
             className="p-1.5 bg-surface-2 hover:bg-surface-3 text-text rounded-brand transition-all duration-150 ease-out active:scale-[0.96]"
             title={t("common.refresh", { defaultValue: "Refresh" })}
@@ -158,6 +160,7 @@ export default function GitPanel({ workspace, fileBus, onBack, onOpenFile }) {
             const displayName = repo.relPath || repo.name;
             const count = countOf(repo);
             const isOpen = activeRepo === repo.path;
+            const { ahead = 0, behind = 0 } = syncPerRepo[repo.path] || {};
 
             return (
               <div key={repo.path} className="border-b border-border-subtle last:border-0">
@@ -176,6 +179,16 @@ export default function GitPanel({ workspace, fileBus, onBack, onOpenFile }) {
                   <span className="truncate flex-1 text-left font-medium" title={displayName}>
                     {displayName}
                   </span>
+                  {ahead > 0 && (
+                    <span className="flex items-center text-[11px] normal-case tracking-normal text-brand-500 flex-shrink-0" title={`${ahead} to push`}>
+                      <ArrowUp size={11} />{ahead}
+                    </span>
+                  )}
+                  {behind > 0 && (
+                    <span className="flex items-center text-[11px] normal-case tracking-normal text-amber-500 flex-shrink-0" title={`${behind} to pull`}>
+                      <ArrowDown size={11} />{behind}
+                    </span>
+                  )}
                   {repo.branch && (
                     <span
                       className="text-text-subtle normal-case tracking-normal truncate max-w-[45%] text-[11px]"
