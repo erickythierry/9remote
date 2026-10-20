@@ -46,6 +46,8 @@ next-env.d.ts
 .cursor/*
 .agents/*
 docs/*
+!docs/typescript-migration/
+!docs/typescript-migration/**
 worker/node_modules/*
 worker/.wrangler/*
 worker/package-lock.json

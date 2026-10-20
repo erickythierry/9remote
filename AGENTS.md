@@ -63,7 +63,7 @@ Each feature owns a `*Socket.js` entry that registers handlers on the shared ser
 
 ## Conventions (from `.cursor/rules/`)
 
-- **JavaScript only, no TypeScript.** ES modules (`"type": "module"`).
+- **TypeScript is the default for new and migrated product code.** During the incremental migration, existing JavaScript and TypeScript may coexist; do not rename or convert unrelated files. Keep JavaScript/MJS for tool configuration, build/release automation, generated/runtime-required outputs, and file-specific exceptions recorded in `docs/typescript-migration/exceptions.md`. Use `.tsx` for TS containing JSX. ES modules (`"type": "module"`) remain the source convention where applicable.
 - **camelCase** for functions, variables, files, folders, and DB columns.
 - **No hardcoded values** — centralize constants in `constants.js`/`config.js` per module (e.g. `host/lib/constants.js`, feature-level `constants.js`, `REMOTE_CONFIG.js`).
 - Domain-Driven / feature-sliced structure; reuse existing code before adding new.
