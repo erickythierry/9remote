@@ -10,7 +10,7 @@ import { RIGHT_PANEL_WIDTH } from "../constants/terminalConfig";
 import { useWorkspaceRepos } from "../hooks/useWorkspaceRepos";
 import { useWorkspaceRoots } from "../hooks/useWorkspaceRoots";
 import { useWorkspaceGit } from "../hooks/useWorkspaceGit";
-import { useWorkspaceChangedCount } from "../hooks/useWorkspaceChangedCount";
+import { useWorkspaceChangedCount, refreshWorkspaceChangedCount } from "../hooks/useWorkspaceChangedCount";
 import { GIT_REFRESH_EVENT } from "@/features/fileExplorer/constants/fileExplorer.js";
 import { useFileBusStore } from "@/shared/stores/fileBusStore";
 import ConfirmDialog from "@/shared/components/ui/ConfirmDialog";
@@ -40,7 +40,7 @@ function TerminalRightPanel({
   const activeTab = tab === "trees" ? "git" : tab;
   const { repos, refresh: refreshRepos, scanning, deep, scanDeeper } = useWorkspaceRepos(workspacePath, activeFileBus);
   // Polled while the tab is visible; without it the badge freezes at the scan-time count.
-  const { perRepo: livePerRepo } = useWorkspaceChangedCount(workspacePath, activeFileBus);
+  const { perRepo: livePerRepo, syncPerRepo } = useWorkspaceChangedCount(workspacePath, activeFileBus);
   // The files tab may be revealed at a pane's live cwd; the other tabs stay workspace-rooted
   const effectiveFilesRoot = filesRoot || workspacePath;
   const { roots, refresh: refreshRoots } = useWorkspaceRoots(effectiveFilesRoot, activeFileBus);
@@ -261,7 +261,12 @@ function TerminalRightPanel({
           <PanelButton
             icon={RefreshCw}
             label={t("workspaces.refreshRepos")}
-            onClick={() => { refresh(); treeActions?.refresh?.(); if (typeof window !== "undefined") window.dispatchEvent(new Event(GIT_REFRESH_EVENT)); }}
+            onClick={() => {
+              refresh();
+              treeActions?.refresh?.();
+              if (typeof window !== "undefined") window.dispatchEvent(new Event(GIT_REFRESH_EVENT));
+              refreshWorkspaceChangedCount(workspacePath);
+            }}
             disabled={scanning}
             spinning={scanning}
           />
@@ -431,18 +436,23 @@ function TerminalRightPanel({
           <div className="flex-1 min-h-0 overflow-y-auto modal-scrollable">
             {/* A workspace holding many clones would otherwise list every one of them and
                 mount a git-status panel each. Only repos with changes show by default. */}
-            {gitRepos.map((repo) => (
-              <RepoSection
-                key={repo.path}
-                repo={repo}
-                changedCount={countOf(repo)}
-                isOpen={activeRepo === repo.path}
-                onToggle={() => setOpenRepo(activeRepo === repo.path ? "" : repo.path)}
-                onHide={canHideRepo(repo) ? () => hideRepo(repo.path) : null}
-              >
-                <ScmPanel workspace={repo.path} fileBus={activeFileBus} onOpenFile={onOpenFile} tagDiffWithRepo onBranchChanged={refreshRepos} />
-              </RepoSection>
-            ))}
+            {gitRepos.map((repo) => {
+              const { ahead = 0, behind = 0 } = syncPerRepo?.[repo.path] || {};
+              return (
+                <RepoSection
+                  key={repo.path}
+                  repo={repo}
+                  changedCount={countOf(repo)}
+                  ahead={ahead}
+                  behind={behind}
+                  isOpen={activeRepo === repo.path}
+                  onToggle={() => setOpenRepo(activeRepo === repo.path ? "" : repo.path)}
+                  onHide={canHideRepo(repo) ? () => hideRepo(repo.path) : null}
+                >
+                  <ScmPanel workspace={repo.path} fileBus={activeFileBus} onOpenFile={onOpenFile} tagDiffWithRepo onBranchChanged={refreshRepos} />
+                </RepoSection>
+              );
+            })}
 
             {!gitRepos.length && !scanning && (
               <p className="p-4 text-xs text-text-subtle italic">
@@ -661,7 +671,7 @@ function FooterAction({ onClick, children }) {
 }
 
 // Collapsed by default: mounting a ScmPanel per repo means one `git status` per repo.
-function RepoSection({ repo, changedCount = 0, isOpen, onToggle, onHide, children }) {
+function RepoSection({ repo, changedCount = 0, ahead = 0, behind = 0, isOpen, onToggle, onHide, children }) {
   const { t } = useI18n();
   return (
     <div className="border-b border-border-subtle last:border-0">
@@ -671,6 +681,22 @@ function RepoSection({ repo, changedCount = 0, isOpen, onToggle, onHide, childre
       >
         <ChevronRight size={11} className={`flex-shrink-0 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`} />
         <span className="truncate flex-1 text-left" title={repo.relPath || repo.name}>{repo.relPath || repo.name}</span>
+        {ahead > 0 && (
+          <span
+            className="text-[10px] font-medium px-1.5 rounded-brand bg-brand-500/15 text-brand-500 normal-case tracking-normal flex-shrink-0"
+            title={`${ahead} to push`}
+          >
+            ↑{ahead}
+          </span>
+        )}
+        {behind > 0 && (
+          <span
+            className="text-[10px] font-medium px-1.5 rounded-brand bg-surface-3 text-text-muted normal-case tracking-normal flex-shrink-0"
+            title={`${behind} to pull`}
+          >
+            ↓{behind}
+          </span>
+        )}
         {repo.branch && <span className="text-text-subtle normal-case tracking-normal truncate max-w-[45%]" title={repo.branch}>{repo.branch}</span>}
         {changedCount > 0 && (
           <span className="px-1 rounded-[2px] bg-brand-500/15 text-brand-500 normal-case tracking-normal flex-shrink-0">

@@ -212,12 +212,14 @@ export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRe
       return;
     }
     setCommitMsg("");
+    window.dispatchEvent(new CustomEvent(GIT_REFRESH_EVENT));
     if (!pendingPush) {
       setResult({ ok: true, text: commitSummary(t, res.output) });
       reload();
       return;
     }
     const pushed = await fileBus.gitPush?.(workspace);
+    window.dispatchEvent(new CustomEvent(GIT_REFRESH_EVENT));
     setResult(pushed?.success
       ? { ok: true, text: `${commitSummary(t, res.output)} · ${pushSummary(t, pushed.output)}` }
       : { ok: false, text: pushed?.output || pushed?.error || t("git.pushFailed") });
@@ -230,6 +232,7 @@ export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRe
     setResult(null);
     const res = await fileBus.gitPush?.(workspace);
     setLoading(false);
+    window.dispatchEvent(new CustomEvent(GIT_REFRESH_EVENT));
     setResult(res?.success
       ? { ok: true, text: pushSummary(t, res.output) }
       : { ok: false, text: res?.output || res?.error || t("git.pushFailed") });
@@ -242,6 +245,7 @@ export default function ScmPanel({ workspace, fileBus, onOpenFile, tagDiffWithRe
     setResult(null);
     const res = await fileBus.gitPull?.(workspace);
     setLoading(false);
+    window.dispatchEvent(new CustomEvent(GIT_REFRESH_EVENT));
     setResult(res?.success
       ? { ok: true, text: pullSummary(t, res.output) }
       : { ok: false, text: res?.output || res?.error || t("git.pullFailed") });
