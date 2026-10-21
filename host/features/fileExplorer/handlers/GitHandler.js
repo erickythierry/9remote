@@ -31,7 +31,12 @@ function fetchRepoCached(repoPath, force) {
   const pending = runGit(["fetch", "--quiet", "--no-tags"], repoPath, {
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
     timeout: GIT_FETCH_TIMEOUT_MS
-  }).then(() => { _fetchCache.set(repoPath, { ts: Date.now(), pending: null }); });
+  }).then(async (r) => {
+    if (r && r.code !== 0 && isAuthFailure(r.stderr)) {
+      await tryRemoteFallback(repoPath, ["fetch", "--quiet", "--no-tags"]);
+    }
+    _fetchCache.set(repoPath, { ts: Date.now(), pending: null });
+  });
   _fetchCache.set(repoPath, { ts: cached?.ts ?? 0, pending });
   return pending;
 }
@@ -90,6 +95,72 @@ export function runGit(args, cwd, opts = {}) {
     child.on("error", (e) => resolve({ code: -1, stdout, stderr: e.message }));
     child.on("close", (code) => resolve({ code, stdout, stderr }));
   });
+}
+
+export const AUTH_FAILURE_REGEX = /could not read (username|password)|terminal prompts disabled|authentication failed|permission denied \(publickey\)|invalid username or password|(?:HTTP|error:?)\s*(?:401|403)/i;
+
+export function isAuthFailure(output) {
+  if (!output) return false;
+  return AUTH_FAILURE_REGEX.test(output);
+}
+
+export function toSshUrl(url) {
+  if (!url) return null;
+  const match = url.trim().match(/^https?:\/\/(?:[^/@]+@)?([^/:]+)(?::\d+)?\/(.+)$/);
+  if (!match) return null;
+  return `git@${match[1]}:${match[2]}`;
+}
+
+export function toHttpsUrl(url) {
+  if (!url || /^https?:\/\//i.test(url)) return null;
+  const match = url.trim().match(/^(?:ssh:\/\/)?(?:[^@]+@)?([^:/]+)(?::\d+)?[:/](.+)$/);
+  if (!match) return null;
+  return `https://${match[1]}/${match[2].replace(/^\/+/, "")}`;
+}
+
+async function getRemoteNameAndUrl(repoPath) {
+  const branchRes = await runGit(["branch", "--show-current"], repoPath);
+  const branch = branchRes.code === 0 ? branchRes.stdout.trim() : "";
+  let remoteName = "origin";
+  if (branch) {
+    const r = await runGit(["config", `branch.${branch}.remote`], repoPath);
+    if (r.code === 0 && r.stdout.trim()) remoteName = r.stdout.trim();
+  }
+  const urlRes = await runGit(["remote", "get-url", remoteName], repoPath);
+  if (urlRes.code === 0 && urlRes.stdout.trim()) {
+    return { remoteName, remoteUrl: urlRes.stdout.trim() };
+  }
+  return null;
+}
+
+// Transparent fallback between HTTPS and SSH: if pushing/pulling fails with an auth
+// error (e.g. HTTPS repo on a machine that uses SSH keys, or vice-versa), try the alternative protocol.
+export async function tryRemoteFallback(repoPath, gitArgs) {
+  const remoteInfo = await getRemoteNameAndUrl(repoPath);
+  if (!remoteInfo) return { attempted: false };
+  const { remoteName, remoteUrl } = remoteInfo;
+
+  let altUrl = null;
+  if (/^https?:\/\//i.test(remoteUrl)) {
+    altUrl = toSshUrl(remoteUrl);
+  } else if (/^(?:ssh:\/\/)?(?:[^@]+@)?[^:/]+[:/]/i.test(remoteUrl)) {
+    altUrl = toHttpsUrl(remoteUrl);
+  }
+
+  if (!altUrl || altUrl === remoteUrl) return { attempted: false };
+
+  const setAlt = await runGit(["remote", "set-url", remoteName, altUrl], repoPath);
+  if (setAlt.code !== 0) return { attempted: false };
+
+  const retryRes = await runGit(gitArgs, repoPath, { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+  const retryOutput = (retryRes.stdout + retryRes.stderr).trim();
+
+  if (retryRes.code === 0) {
+    return { attempted: true, result: retryRes, output: retryOutput };
+  }
+
+  await runGit(["remote", "set-url", remoteName, remoteUrl], repoPath);
+  return { attempted: false };
 }
 
 // Sync no-shell git for legacy sync handlers. args is an argv array (never a template
@@ -409,8 +480,15 @@ export function setupGitHandlers(socket) {
 
   socket.on("gitPush", async ({ repoPath }, callback) => {
     try {
-      const r = await runGit(["push"], repoPath);
-      const output = (r.stdout + r.stderr).trim();
+      let r = await runGit(["push"], repoPath, { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+      let output = (r.stdout + r.stderr).trim();
+      if (r.code !== 0 && isAuthFailure(output)) {
+        const fallback = await tryRemoteFallback(repoPath, ["push"]);
+        if (fallback.attempted) {
+          r = fallback.result;
+          output = fallback.output;
+        }
+      }
       if (r.code !== 0) return callback({ success: false, output, error: r.stderr.trim() });
       callback({ success: true, output });
     } catch (error) {
@@ -420,8 +498,15 @@ export function setupGitHandlers(socket) {
 
   socket.on("gitPull", async ({ repoPath }, callback) => {
     try {
-      const r = await runGit(["pull"], repoPath);
-      const output = (r.stdout + r.stderr).trim();
+      let r = await runGit(["pull"], repoPath, { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+      let output = (r.stdout + r.stderr).trim();
+      if (r.code !== 0 && isAuthFailure(output)) {
+        const fallback = await tryRemoteFallback(repoPath, ["pull"]);
+        if (fallback.attempted) {
+          r = fallback.result;
+          output = fallback.output;
+        }
+      }
       if (r.code !== 0) return callback({ success: false, output, error: r.stderr.trim() });
       callback({ success: true, output });
     } catch (error) {
