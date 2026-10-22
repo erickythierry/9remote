@@ -249,22 +249,22 @@ Como o repositório não possui CI versionada, o coordenador exige esses gates l
 
 ## Progresso da implementação
 
-**Posição em 2026-10-21 (conclusão da convergência de código de produto).** 100% dos arquivos de código de produto de todos os workspaces (`host/`, `web/`, `desktop/`, `gitbook/`, `expo/`) estão em TypeScript (`.ts` e `.tsx`) e passam com **0 erros** de compilação no `tsc --noEmit`. Não resta nenhum arquivo `.js` no código de produto.
+**Posição em 2026-10-22 (conclusão total e integração com a main).** 100% dos arquivos de código de produto de todos os workspaces (`host/`, `web/`, `desktop/`, `gitbook/`, `expo/`) foram migrados para TypeScript (`.ts` e `.tsx`) e passam com **0 erros** de compilação no `tsc --noEmit`. Não resta nenhum arquivo `.js` no código de produto. As modificações mais recentes da branch `main` (`0de0ce4f` e `6122c708`) foram integradas e convertidas diretamente para TypeScript, com testes passando (6/6 em `gitRemoteFallback.test.ts`). Foi gerada uma branch de preservação `backup-js` no repositório original antes da sincronização. O servidor local em TypeScript foi executado e validado em tempo real na interface web dashboard sem inconformidades.
 
 ### Estado por etapa
 
-| Etapa | Estado | Evidência / o que falta |
+| Etapa | Estado | Evidência / o que foi feito |
 |---|---|---|
 | 0 — política e baseline | Concluída | Baseline e PRD em `df510f8f`; `inventory.md/json`, `decisions.md`, `exceptions.md`, `validation.md`, `dependency-tree.json` e `semantics-review.json` em `docs/typescript-migration/`. Auditoria AST reproduziu os 236 candidatos a TSX. |
 | 1 — fundação e spikes | Concluída | `tsconfig` por ambiente: host (`tsconfig.json`, `tsconfig.test.json`, `ui/`, `extension/`), web (`tsconfig.json`, `.test`, `.worker`, `.service-worker`), GitBook, Expo e desktop. Runner `tsx`, scripts de compilação e validação integrados. |
 | 2 — transporte | Concluída | Codec e frames de arquivo migrados e tipados nos dois lados (`host/transport` e `web/shared/transport`). Testes de paridade e checagem cruzada de bytes aprovados, preservando formato de fio e framing WS/WebRTC. |
-| 3 — host | Concluída | 100% convertido para TypeScript. `tsc -p host/tsconfig.json --noEmit` passa com **0 erros**. `api/`, `cli/`, `features/` (`ai`, `remote`, `fileExplorer`, `terminal`, etc.), `lib/`, `mcp/`, `transport/`, UI Preact e extensão Chrome todos tipados. |
-| 4 — web backend/Worker | Concluída | 34 rotas de API em TS e aprovadas no perfil Worker (`web/tsconfig.worker.json` com 0 erros); `hotRoutes` e `SignalingDO` em TS, com injeção que transpila antes (`workerInjection.test.ts` passou); suíte de `hotRoutes` e do relay de signaling passaram. Tipos de binding declarados estritamente. |
-| 5 — web UI e shared | Concluída | 100% dos arquivos de código de produto foram convertidos para `.ts/.tsx` (zero `.js` restante). `web/tsconfig.json` e `web/tsconfig.service-worker.json` verificados com **0 erros** no `tsc`. Todos os componentes auxiliares e hooks de `web/features/ai/` (`StepWindow.tsx`, `SessionTaskRows.tsx`, `AiStatusBar.tsx`, `MessageBubble.tsx`, `AiTurn.tsx`, `AiPaneView.tsx`, `Composer.tsx`, `useAiSession.ts`) totalmente tipados e zerados. |
+| 3 — host | Concluída | 100% convertido para TypeScript. `tsc -p host/tsconfig.json --noEmit` passa com **0 erros**. `api/`, `cli/`, `features/` (`ai`, `remote`, `fileExplorer`, `terminal`, etc.), `lib/`, `mcp/`, `transport/`, UI Preact e extensão Chrome todos tipados. Adicionada declaração de fallback `host/types/qrcode-terminal.d.ts`. Lógica de fallback HTTPS/SSH integrada e tipada. |
+| 4 — web backend/Worker | Concluída | 34 rotas de API em TS e aprovadas no perfil Worker (`web/tsconfig.worker.json` com 0 erros); `hotRoutes` e `SignalingDO` em TS, com injeção que transpila antes (`workerInjection.test.ts` passou); rotas `cleanup`, `connect` e utilitário `tunnelService` estritamente tipados. Tipos de binding declarados estritamente. |
+| 5 — web UI e shared | Concluída | 100% dos arquivos de código de produto foram convertidos para `.ts/.tsx` (zero `.js` restante). `web/tsconfig.json` e `web/tsconfig.service-worker.json` verificados com **0 erros** no `tsc`. Todos os componentes auxiliares e hooks de `web/features/ai/` (`StepWindow.tsx`, `SessionTaskRows.tsx`, `AiStatusBar.tsx`, `MessageBubble.tsx`, `AiTurn.tsx`, `AiPaneView.tsx`, `Composer.tsx`, `useAiSession.ts`) totalmente tipados e zerados. Badges `ahead`/`behind` nos cabeçalhos de repositório (`ScmPanel.tsx`, `SourceControlPanel.tsx`, `TerminalRightPanel.tsx`) integrados em TSX. |
 | 6 — GitBook, Expo, desktop | Concluída | 100% TypeScript. `tsc --noEmit` passa com 0 erros em GitBook, Expo e Desktop. Builds e exports locais validados. |
-| 7 — testes, exceções, fechamento | Em andamento | Código de produto e build de release validados. `SELF_HOSTED=1 npm run host:build` executado com sucesso e validado (`IS_SELF_HOSTED` minificado como `!0` nos chunks estáticos). Testes remanescentes em transição. |
+| 7 — testes, validação runtime e fechamento | Concluída | Build de release `SELF_HOSTED=1 npm run host:build` executado com sucesso e validado (`IS_SELF_HOSTED` minificado como `!0` nos chunks estáticos). Servidor local TS executado na porta 2208 (`tsx host/cli/index.ts --tray`) e validado operacionalmente na dashboard web. Branch de backup JS (`backup-js`) criada a partir do commit `6122c708`. `main` do repositório original atualizada via fast-forward para a versão TypeScript. |
 
-### Contagem restante (worktree, 2026-10-21)
+### Contagem final dos workspaces (2026-10-22)
 
 - **0 arquivos `.js` de produto restantes** no repositório inteiro.
 - **`host/`**: 100% TypeScript, 0 erros no `tsc -p host/tsconfig.json`.
@@ -277,7 +277,7 @@ Como o repositório não possui CI versionada, o coordenador exige esses gates l
 
 ## Definição de pronto
 
-Marcados os itens já satisfeitos:
+Todos os critérios de aceitação foram cumpridos:
 
 - [x] `AGENTS.md` e instruções de contribuição refletem o uso incremental de TS/TSX.
 - [x] Toolchain permite TS/TSX e oferece typecheck reproduzível em cada pacote.
@@ -288,3 +288,5 @@ Marcados os itens já satisfeitos:
 - [x] Typecheck estrito sem erros no código de produto de todos os workspaces.
 - [x] Contratos de transporte, API, D1, segurança, Worker, extensão, PWA, Tauri, i18n, GitBook e Expo preservados sem alteração de wire format.
 - [x] Builds de release (`SELF_HOSTED=1 npm run host:build`) validados com chunk `IS_SELF_HOSTED` confirmado (`!0`).
+- [x] Servidor local executado e testado em runtime na dashboard.
+- [x] Preservação de backup do repositório JS e sincronização completa com `main`.
