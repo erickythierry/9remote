@@ -533,7 +533,8 @@ export class ProtocolManager {
       this._dispatchAny(this._host, event, args[0]);
       return;
     }
-    if (this._host) {
+    // Plain socket.io sockets already run their own listeners; only HostBus needs this manual dispatch.
+    if (this._host && "dispatchAny" in this._host) {
       const fns = this._host.listeners?.(event) || [];
       const args = wsArgs || [payload];
       for (const fn of fns) fn(...args);

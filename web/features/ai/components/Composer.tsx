@@ -413,7 +413,8 @@ export const Composer = memo(function Composer({
     setText(opensModal ? prefix : `${prefix}${replacement}`);
     setMenuOpen(false);
 
-    if (menuType !== "/") {
+    // A skill is a mention inside the prompt, not a command: keep typing, Enter sends.
+    if (menuType !== "/" || item.isSkill) {
       textareaRef.current?.focus();
       return;
     }
@@ -443,12 +444,11 @@ export const Composer = memo(function Composer({
 
   const selectSuggestion = useCallback((cmd: any) => {
     vibrate();
-    const lastWordMatch = /(?:^|\s)(\S*)$/.exec(text);
-    const token = lastWordMatch ? lastWordMatch[1] : "";
-    setText(text.slice(0, text.length - token.length) + cmd);
+    // Suggestions match the whole draft (see pickCommandItems), so they replace all of it.
+    setText(cmd);
     setSuggestActive(-1);
     textareaRef.current?.focus();
-  }, [text]);
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (modalOpen) return;
