@@ -10,6 +10,7 @@ import { agentById, agentIdFromProcess, isShellProcess } from "../terminal/agent
 import { getConversation, setConversationId, getLastOutputAt, getStatus, getSessionAgent } from "../terminal/statusManager.js";
 import { isTuiChatSurface, engineFromAgent } from "../terminal/conversationModes.js";
 import { CLEAR_LINE } from "../terminal/sessionMode.js";
+import { UPLOAD_DIR } from "../terminal/constants.js";
 import { findTranscript, CLAUDE_SESSION_ID_RE, claudeRecordParser, replayClaudeLines, liveTranscript } from "./claudeTranscript.js";
 import { stageAttachment, buildAttachedPrompt, type AttachmentInput } from "./aiAttachment.js";
 import { AI_ENGINES, CLAUDE_TERMINAL_POLL_MS, CLAUDE_TERMINAL_BOOT_MS, CLAUDE_TERMINAL_SETTLE_MS, CLAUDE_TERMINAL_ENTER_MS, CLAUDE_SHELL_TAIL_BYTES, CLAUDE_SHELL_TAIL_LINES } from "./constants.js";
@@ -81,6 +82,10 @@ function readLines(tail: Tail): string[] | null {
 export const PERMISSION_GATE_PREFIX = "perm-";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// The TUI rewrites a pasted prompt: image paths become "[Image #N]" and long text is wrapped in <pasted_content>.
+const ECHO_NOISE_RE = new RegExp(`\\[Image #\\d+\\]|</?pasted_content[^>]*>|${UPLOAD_DIR}/\\S+`, "g");
+export const echoKey = (text: string) => text.replace(ECHO_NOISE_RE, " ").replace(/\s+/g, " ").trim();
 
 export class ClaudeTerminal {
   session: AiSession;
@@ -193,7 +198,7 @@ export class ClaudeTerminal {
     await this.ensureTui();
     const staged = (attachments || []).map(stageAttachment);
     const text = buildAttachedPrompt(prompt, staged, true);
-    this.echoes.push(text.trim());
+    this.echoes.push(echoKey(text));
     await this.type(text);
   }
 
@@ -319,7 +324,7 @@ export class ClaudeTerminal {
       if (this.muted || (ev.event === "cli_event" && ev.data?.type === "attachment")) return;
       if (ev.event === "user_message") {
         // Up to the match: a slash command never echoes as a user record, so its entry is dropped here.
-        const at = this.echoes.indexOf(String(ev.data?.text || "").trim());
+        const at = this.echoes.indexOf(echoKey(String(ev.data?.text || "")));
         if (at !== -1) { this.echoes.splice(0, at + 1); return; }
       }
       s.emitNormalized(ev.event, ev.data);

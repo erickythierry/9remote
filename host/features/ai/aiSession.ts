@@ -1087,7 +1087,8 @@ export class AiSession {
       const rec = ev.data?.record || {};
       const taskId = rec.task_id || ev.data?.task_id;
       if (!taskId || ended.has(taskId)) continue;
-      if (includeBackground || !rec.is_backgrounded) {
+      // An async sub-agent outlives the turn that launched it; only its task_notification ends it.
+      if (includeBackground || (!rec.is_backgrounded && !rec.async_launch)) {
         ended.add(taskId);
         this.emitNormalized("cli_event", {
           type: "system",

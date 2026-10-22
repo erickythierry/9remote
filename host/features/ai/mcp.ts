@@ -22,14 +22,14 @@ export interface McpServerItem {
 // own: the codex branch used to run for every engine, so the modal listed claude's
 // servers as codex's and vice versa. An engine with no reader returns nothing rather
 // than borrowing another's.
-const MCP_SERVER_READERS: Record<string, () => McpServerItem[]> = {
+const MCP_SERVER_READERS: Record<string, (cwd?: string) => McpServerItem[]> = {
   claude: claudeServers,
   codex: codexServers,
   opencode: opencodeServers
 };
 
-export function listMcpServers(engine: string = "claude"): McpServerItem[] {
-  return MCP_SERVER_READERS[engine]?.() ?? [];
+export function listMcpServers(engine: string = "claude", cwd?: string): McpServerItem[] {
+  return MCP_SERVER_READERS[engine]?.(cwd) ?? [];
 }
 
 /** OpenCode keeps them in ~/.config/opencode/opencode.json under mcp.servers. */
@@ -53,21 +53,66 @@ function opencodeServers(): McpServerItem[] {
     }));
 }
 
-/** Claude keeps them in ~/.claude/settings.json, keyed by name. */
-function claudeServers(): McpServerItem[] {
-  const file = path.join(os.homedir(), ".claude", "settings.json");
-  try {
-    const data = JSON.parse(fs.readFileSync(file, "utf8"));
-    return Object.entries(data.mcpServers || {}).map(([name, cfg]: [string, any]) => ({
-      id: name,
-      name,
-      type: cfg.url ? "http" : "stdio",
-      command: cfg.command || cfg.url || "",
-      status: "configured"
-    }));
-  } catch {
-    return [];
+const readJson = (file: string): any => {
+  try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; }
+};
+
+// A url can carry a key in its query; the list only needs to say where the server is.
+const bareUrl = (url: string) => String(url).split("?")[0];
+
+function toItem(name: string, cfg: any, id = name): McpServerItem {
+  return {
+    id,
+    name: id,
+    type: cfg?.url ? "http" : "stdio",
+    command: cfg?.url ? bareUrl(cfg.url) : cfg?.command || "",
+    status: "configured"
+  };
+}
+
+// A .mcp.json is either { mcpServers: {...} } or the bare name → config map.
+const serversOf = (data: any): Record<string, any> => data?.mcpServers || (data && typeof data === "object" ? data : {});
+
+/** cwd, then each parent up to the root: where a project-scope config may live. */
+function ancestors(cwd: string): string[] {
+  const out: string[] = [];
+  for (let dir = path.resolve(cwd); !out.includes(dir); dir = path.dirname(dir)) out.push(dir);
+  return out;
+}
+
+/**
+ * Claude's servers, by the scopes the CLI itself merges: user and per-project entries in
+ * ~/.claude.json, the project's .mcp.json, and the .mcp.json of each enabled plugin.
+ * ~/.claude/settings.json is kept for older setups. A name defined twice shows once.
+ */
+function claudeServers(cwd: string = process.cwd()): McpServerItem[] {
+  const home = os.homedir();
+  const out = new Map<string, McpServerItem>();
+  const add = (name: string, cfg: any, id = name) => { if (!out.has(id)) out.set(id, toItem(name, cfg, id)); };
+
+  const state = readJson(path.join(home, ".claude.json"));
+  const dirs = ancestors(cwd);
+  for (const dir of dirs) {
+    for (const [name, cfg] of Object.entries(state?.projects?.[dir]?.mcpServers || {})) add(name, cfg);
   }
+  for (const dir of dirs) {
+    for (const [name, cfg] of Object.entries(serversOf(readJson(path.join(dir, ".mcp.json"))))) add(name, cfg);
+  }
+  for (const [name, cfg] of Object.entries(state?.mcpServers || {})) add(name, cfg);
+  for (const [name, cfg] of Object.entries(readJson(path.join(home, ".claude", "settings.json"))?.mcpServers || {})) add(name, cfg);
+
+  const enabled = readJson(path.join(home, ".claude", "settings.json"))?.enabledPlugins || {};
+  const installed = readJson(path.join(home, ".claude", "plugins", "installed_plugins.json"));
+  for (const [key, entries] of Object.entries<any>(installed?.plugins || {})) {
+    if (!enabled[key]) continue;
+    const [plugin] = key.split("@");
+    const installPath = Array.isArray(entries) ? entries[0]?.installPath : null;
+    if (!installPath) continue;
+    for (const [name, cfg] of Object.entries(serversOf(readJson(path.join(installPath, ".mcp.json"))))) {
+      add(name, cfg, `plugin:${plugin}:${name}`);
+    }
+  }
+  return [...out.values()];
 }
 
 /**

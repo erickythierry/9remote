@@ -67,6 +67,25 @@ test("each engine reports its OWN servers", () => {
   assert.deepEqual(listMcpServers("codex").map((s) => s.name), ["node_repl", "9remote", "computer-use"]);
 });
 
+test("claude also reads ~/.claude.json, the project's .mcp.json and enabled plugins", () => {
+  const proj = path.join(sandbox, "work", "app");
+  write(".claude.json", JSON.stringify({
+    mcpServers: { "user-one": { command: "u1" }, exa: { command: "dup" } },
+    projects: { [proj]: { mcpServers: { "proj-one": { url: "https://p/mcp?key=SECRET" } } } }
+  }));
+  write("work/app/.mcp.json", JSON.stringify({ mcpServers: { "file-one": { command: "f1" } } }));
+  write(".claude/settings.json", JSON.stringify({ mcpServers: { exa: { command: "exa-mcp" } }, enabledPlugins: { "ctx@mk": true, "off@mk": false } }));
+  const install = path.join(sandbox, ".claude", "plugins", "cache", "ctx");
+  write(".claude/plugins/installed_plugins.json", JSON.stringify({ plugins: { "ctx@mk": [{ installPath: install }], "off@mk": [{ installPath: install }] } }));
+  write(".claude/plugins/cache/ctx/.mcp.json", JSON.stringify({ mcpServers: { context7: { type: "http", url: "https://c7/mcp" } } }));
+  const servers = listMcpServers("claude", path.join(proj, "src"));
+  assert.deepEqual(servers.map((s) => s.name).sort(), ["exa", "file-one", "plugin:ctx:context7", "proj-one", "user-one"]);
+  assert.equal(servers.find((s) => s.name === "proj-one")?.command, "https://p/mcp");
+  // The tests below share this sandbox and expect its original claude config.
+  for (const rel of [".claude.json", "work", ".claude/plugins"]) fs.rmSync(path.join(sandbox, rel), { recursive: true, force: true });
+  write(".claude/settings.json", JSON.stringify({ mcpServers: { exa: { command: "exa-mcp" }, "remote-thing": { url: "https://x/mcp" } } }));
+});
+
 test("an option table is not a server", () => {
   // `.env` and `.http_headers` are keys OF a server, not servers.
   const names = listMcpServers("codex").map((s) => s.name);

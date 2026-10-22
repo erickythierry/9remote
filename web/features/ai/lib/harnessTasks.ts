@@ -298,7 +298,7 @@ function compactFrom(record: any) {
  * The harness decides this, not us: a record it bothers to give `content` (or a formatted
  * `error`) is one it means a person to read — `local_command`, `compact_boundary`,
  * `informational`, `away_summary`, and the errors. Records it writes for bookkeeping
- * (`turn_duration`, `stop_hook_summary`) carry neither, and get no row.
+ * (`turn_duration`) carry neither, and get no row; `stop_hook_summary` is phrased below.
  *
  * `level` is the harness's own (`info` | `warning` | `error` | `suggestion`), passed
  * through so the row is styled the way the CLI would have styled it.
@@ -383,6 +383,15 @@ export function noticeFrom(type: string, record: any, engine: string | null = nu
       : (record.original_model || record.fallback_model || "model changed");
     const reason = typeof record.content === "string" ? record.content.trim() : "";
     return { subtype: record.subtype, level: "warning", content: reason ? `Model fallback: ${swap} — ${reason}` : `Model fallback: ${swap}` };
+  }
+  // The hooks run in parallel, so the longest one is how long the turn's end waited. The host strips the commands.
+  if (type === "system" && record.subtype === "stop_hook_summary") {
+    const count = Number(record.hookCount) || 0;
+    if (!count) return null;
+    const longest = Math.max(0, ...(record.hookDurationsMs || []).map(Number));
+    const failed = Number(record.hookErrorCount) || 0;
+    const text = `Stop hooks · ${count}${longest ? ` · ${(longest / 1000).toFixed(1)}s` : ""}${failed ? ` · ${failed} failed` : ""}`;
+    return { subtype: "stop_hook_summary", level: failed ? "warning" : "info", content: text };
   }
   // The live retry frame carries numbers, not prose — the numbers are the sentence. The
   // store replaces the retrying row, so a ten-attempt storm stays one line.

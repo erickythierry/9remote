@@ -258,7 +258,7 @@ function defaultEffortFor(engine: string) {
 // Sent on every create, live sessions too — the replay log carries no modelOptions.
 async function emitConnectMetadata(session: AiSession, engine: string) {
   const skills = listSkills(engine, session.cwd);
-  const mcpServers = listMcpServers(engine);
+  const mcpServers = listMcpServers(engine, session.cwd);
   // Live '/' menu feed the adapter already fetched (opencode, omp).
   const commands = session.adapter?.metadata?.commands;
   const launcher = launcherFor(session.id, engine);

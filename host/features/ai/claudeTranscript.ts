@@ -38,6 +38,19 @@ function slimAttachmentRecord(record: any): { attachment: Record<string, any> } 
   return { attachment };
 }
 
+const LAUNCH_TASK_TOOLS = new Set(["Agent", "Task", "Bash", "Monitor"]);
+
+// hookInfos[].command is each hook's whole command line and can hold a token; the pane needs only counts and times.
+function slimSystemRecord(record: any): any {
+  if (record?.subtype !== "stop_hook_summary") return record;
+  const { hookInfos, hookErrors, hookAdditionalContext, ...rest } = record;
+  return {
+    ...rest,
+    hookDurationsMs: (hookInfos || []).map((h: any) => Number(h?.durationMs) || 0),
+    hookErrorCount: (hookErrors || []).length
+  };
+}
+
 export function findTranscript(cwd: string, cliSessionId: string): string | null {
   const projectsDir = path.join(os.homedir(), ".claude", "projects");
   const safeCwd = String(cwd).replace(/[/\\:]/g, "-");
@@ -174,6 +187,19 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
             // `running`, not `done` — the work outlives the call, and the handle lets a later record settle it.
             ...(async ? { status: "running", async: true, handle: async.id } : null)
           }));
+        // The TUI never writes task_started (only the stream-json CLI does); without it the strip and modal have no name or tool_use_id for the task.
+        if (async && call && LAUNCH_TASK_TOOLS.has(call.name)) {
+          const agent = call.name === "Agent" || call.name === "Task";
+          const input = call.input || {};
+          const description = input.description || (agent ? "" : input.command) || "";
+          const record = {
+            type: "system", subtype: "task_started", task_id: async.id, tool_use_id: tr.tool_use_id,
+            ...(description ? { description: String(description).slice(0, 200) } : null),
+            ...(agent && input.subagent_type ? { subagent_type: input.subagent_type } : null),
+            ...(agent ? { async_launch: true } : { is_backgrounded: true, task_type: "local_bash" })
+          };
+          push({ event: "cli_event", data: { type: "system", subtype: "task_started", record } });
+        }
         // A rejected edit never reached the disk, so it paints no diff — the tool row stays to say it was refused.
         if (call && !isError && DIFF_TOOL_SET.has(call.name)) {
           const diff = buildEditDiff(call.name, call.input);
@@ -194,7 +220,7 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
       // Carried whole under its own name — the pane (noticeFrom) decides what to show.
       push({
         event: "cli_event",
-        data: { type: "system", subtype: d.subtype || "", record: d }
+        data: { type: "system", subtype: d.subtype || "", record: slimSystemRecord(d) }
       });
     } else if (d.type === "assistant" && d.message) {
       for (const item of d.message.content || []) {
