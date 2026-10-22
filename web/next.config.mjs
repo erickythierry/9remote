@@ -34,6 +34,12 @@ const nextConfig = {
   },
   webpack: (config) => {
     config.resolve.alias["@app-fonts"] = fontsCss;
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      ".js": [".js", ".ts", ".tsx"],
+      ".jsx": [".jsx", ".tsx"],
+      ".mjs": [".mjs", ".mts"],
+    };
     // The alias target is invisible to the persistent cache; key it so the two builds never share CSS.
     if (config.cache && typeof config.cache === "object") config.cache.version = `${config.cache.version || ""}|fonts:${isSelfHosted ? "local" : "remote"}`;
     return config;

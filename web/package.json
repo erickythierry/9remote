@@ -3,15 +3,19 @@
   "version": "2.4.0",
   "type": "module",
   "scripts": {
-    "predev": "pkill -f 'workerd.*9remote' 2>/dev/null; true",
-    "dev": "next dev -H ::",
+    "predev": "npm run build:browser-assets && pkill -f 'workerd.*9remote' 2>/dev/null; true",
+    "dev": "next dev --webpack -H ::",
     "build": "NODE_ENV=production next build --webpack",
     "build:static": "node ../scripts/buildWebStatic.mjs",
     "build:cf": "npm run build && NODE_ENV=production opennextjs-cloudflare build && node scripts/injectSignalingDO.mjs && node scripts/injectHotRoutes.mjs && node scripts/injectScheduled.mjs",
     "deploy": "npm run build:cf && opennextjs-cloudflare deploy",
     "deploy:dev": "NEXT_PUBLIC_WORKER_URL=https://dev.9remote.cc npm run build:cf && opennextjs-cloudflare deploy --env dev",
     "preview": "opennextjs-cloudflare preview",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv env.d.ts"
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv env.d.ts",
+    "test": "node ../scripts/runTests.mjs web",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.service-worker.json",
+    "build:browser-assets": "node scripts/buildBrowserAssets.mjs",
+    "prebuild": "npm run build:browser-assets"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

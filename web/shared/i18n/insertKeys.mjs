@@ -29,10 +29,10 @@ if (!anchor || !translations || !translations.en) {
   process.exit(1);
 }
 
-const files = readdirSync(LOCALES_DIR).filter(f => f.endsWith(".js") && f !== "index.js");
+const files = readdirSync(LOCALES_DIR).filter(f => /\.(?:js|ts)$/.test(f) && !/^index\.(?:js|ts)$/.test(f));
 
 for (const file of files) {
-  const code = file.replace(".js", "");
+  const code = file.replace(/\.(?:js|ts)$/, "");
   const pairs = translations[code] || translations.en;
   const path = join(LOCALES_DIR, file);
   const lines = readFileSync(path, "utf8").split("\n");

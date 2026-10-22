@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readWorkerSource } from "./readWorkerSource.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const workerPath = path.join(root, ".open-next/worker.js");
@@ -16,7 +17,7 @@ if (!existsSync(workerPath)) {
 }
 
 // DO source minus its own import line (worker gets a single shared import).
-const doSrc = readFileSync(doSrcPath, "utf8")
+const doSrc = readWorkerSource(doSrcPath)
   .replace(/^import\s*\{[^}]*DurableObject[^}]*\}\s*from\s*["']cloudflare:workers["'];?\s*/m, "")
   .trim();
 

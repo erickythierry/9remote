@@ -6,6 +6,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readWorkerSource } from "./readWorkerSource.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const workerPath = path.join(root, ".open-next/worker.js");
@@ -24,7 +25,7 @@ if (src.includes(MARKER)) {
   process.exit(0);
 }
 
-const hotSrc = readFileSync(hotSrcPath, "utf8")
+const hotSrc = readWorkerSource(hotSrcPath)
   .replace(/^import\s[^\n]*\n/gm, "") // none today, but keep the copy import-proof
   .trim();
 

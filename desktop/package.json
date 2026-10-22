@@ -6,6 +6,9 @@
   "author": "9Remote",
   "type": "module",
   "scripts": {
+    "pretauri": "npm run build:frontend",
+    "build:frontend": "esbuild src/themeBootstrap.ts src/tauriBootstrap.ts --bundle --format=iife --target=es2022 --outdir=dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "tauri": "tauri",
     "tauri:build": "tauri build"
   },

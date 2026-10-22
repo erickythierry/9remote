@@ -1,5 +1,5 @@
 export default {
-  content: ["./index.html", "./ui/src/**/*.{js,jsx}"],
+  content: ["./index.html", "./ui/src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
       fontFamily: {

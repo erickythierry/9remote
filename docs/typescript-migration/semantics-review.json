@@ -1,0 +1,17 @@
+{
+  "revision": "5ec709ed34757c4ef425682586e9e94e8d4571be",
+  "scopes": [
+    "host/features/jarvis"
+  ],
+  "identical": 6,
+  "requiresReview": [
+    {
+      "baseline": "host/features/jarvis/fleetRunner.js",
+      "migrated": "host/features/jarvis/fleetRunner.ts"
+    },
+    {
+      "baseline": "host/features/jarvis/jarvisAgent.js",
+      "migrated": "host/features/jarvis/jarvisAgent.ts"
+    }
+  ]
+}

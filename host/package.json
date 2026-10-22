@@ -9,17 +9,19 @@
     "9remote": "./dist/cli.cjs"
   },
   "scripts": {
-    "start": "node cli/index.js",
-    "ui": "node cli/index.js ui",
-    "dev": "NODE_ENV=development nodemon cli/index.js tui",
-    "dev:server": "NODE_ENV=development nodemon index.js",
+    "start": "tsx cli/index.ts",
+    "ui": "tsx cli/index.ts ui",
+    "dev": "NODE_ENV=development nodemon --exec tsx cli/index.ts tui",
+    "dev:server": "NODE_ENV=development nodemon --exec tsx index.ts",
     "dev:ui": "npm-run-all --parallel dev:ui:run dev:vite:wait",
     "dev:vite": "vite",
     "dev:vite:wait": "wait-on http://localhost:2208/api/health && vite",
-    "dev:ui:run": "NODE_ENV=development nodemon cli/index.js ui",
+    "dev:ui:run": "NODE_ENV=development nodemon --exec tsx cli/index.ts ui",
     "dev:ui:start": "npm-run-all --parallel dev:ui:run:start dev:vite:wait",
-    "dev:ui:run:start": "NODE_ENV=development node cli/index.js ui --start",
+    "dev:ui:run:start": "NODE_ENV=development tsx cli/index.ts ui --start",
     "build:ui": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit && tsc -p ui/tsconfig.json --noEmit && tsc -p extension/tsconfig.json --noEmit",
+    "test": "node ../scripts/runTests.mjs host",
     "postinstall": "node dist/install.cjs || true"
   },
   "files": [

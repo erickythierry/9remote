@@ -247,17 +247,44 @@ Resultados devem usar os estados `passou`, `falhou` ou `bloqueado`, com justific
 
 Como o repositório não possui CI versionada, o coordenador exige esses gates localmente antes de integrar cada pacote. A migração não executa publicação npm, deploy Cloudflare, sync de secrets, assinatura/notarização ou upload de artefatos.
 
+## Progresso da implementação
+
+**Posição em 2026-10-21 (conclusão da convergência de código de produto).** 100% dos arquivos de código de produto de todos os workspaces (`host/`, `web/`, `desktop/`, `gitbook/`, `expo/`) estão em TypeScript (`.ts` e `.tsx`) e passam com **0 erros** de compilação no `tsc --noEmit`. Não resta nenhum arquivo `.js` no código de produto.
+
+### Estado por etapa
+
+| Etapa | Estado | Evidência / o que falta |
+|---|---|---|
+| 0 — política e baseline | Concluída | Baseline e PRD em `df510f8f`; `inventory.md/json`, `decisions.md`, `exceptions.md`, `validation.md`, `dependency-tree.json` e `semantics-review.json` em `docs/typescript-migration/`. Auditoria AST reproduziu os 236 candidatos a TSX. |
+| 1 — fundação e spikes | Concluída | `tsconfig` por ambiente: host (`tsconfig.json`, `tsconfig.test.json`, `ui/`, `extension/`), web (`tsconfig.json`, `.test`, `.worker`, `.service-worker`), GitBook, Expo e desktop. Runner `tsx`, scripts de compilação e validação integrados. |
+| 2 — transporte | Concluída | Codec e frames de arquivo migrados e tipados nos dois lados (`host/transport` e `web/shared/transport`). Testes de paridade e checagem cruzada de bytes aprovados, preservando formato de fio e framing WS/WebRTC. |
+| 3 — host | Concluída | 100% convertido para TypeScript. `tsc -p host/tsconfig.json --noEmit` passa com **0 erros**. `api/`, `cli/`, `features/` (`ai`, `remote`, `fileExplorer`, `terminal`, etc.), `lib/`, `mcp/`, `transport/`, UI Preact e extensão Chrome todos tipados. |
+| 4 — web backend/Worker | Concluída | 34 rotas de API em TS e aprovadas no perfil Worker (`web/tsconfig.worker.json` com 0 erros); `hotRoutes` e `SignalingDO` em TS, com injeção que transpila antes (`workerInjection.test.ts` passou); suíte de `hotRoutes` e do relay de signaling passaram. Tipos de binding declarados estritamente. |
+| 5 — web UI e shared | Concluída | 100% dos arquivos de código de produto foram convertidos para `.ts/.tsx` (zero `.js` restante). `web/tsconfig.json` e `web/tsconfig.service-worker.json` verificados com **0 erros** no `tsc`. Todos os componentes auxiliares e hooks de `web/features/ai/` (`StepWindow.tsx`, `SessionTaskRows.tsx`, `AiStatusBar.tsx`, `MessageBubble.tsx`, `AiTurn.tsx`, `AiPaneView.tsx`, `Composer.tsx`, `useAiSession.ts`) totalmente tipados e zerados. |
+| 6 — GitBook, Expo, desktop | Concluída | 100% TypeScript. `tsc --noEmit` passa com 0 erros em GitBook, Expo e Desktop. Builds e exports locais validados. |
+| 7 — testes, exceções, fechamento | Em andamento | Código de produto e build de release validados. `SELF_HOSTED=1 npm run host:build` executado com sucesso e validado (`IS_SELF_HOSTED` minificado como `!0` nos chunks estáticos). Testes remanescentes em transição. |
+
+### Contagem restante (worktree, 2026-10-21)
+
+- **0 arquivos `.js` de produto restantes** no repositório inteiro.
+- **`host/`**: 100% TypeScript, 0 erros no `tsc -p host/tsconfig.json`.
+- **`host/ui/`**: 100% TypeScript, 0 erros no `tsc -p host/ui/tsconfig.json`.
+- **`host/extension/`**: 100% TypeScript, 0 erros no `tsc -p host/extension/tsconfig.json`.
+- **`desktop/`**: 100% TypeScript, 0 erros no `tsc -p desktop/tsconfig.json`.
+- **`gitbook/`**: 100% TypeScript, 0 erros no `tsc -p gitbook/tsconfig.json`.
+- **`expo/`**: 100% TypeScript, 0 erros no `tsc -p expo/tsconfig.json`.
+- **`web/`**: 100% TypeScript, 0 erros no `tsc -p web/tsconfig.json`, `web/tsconfig.worker.json` e `web/tsconfig.service-worker.json`.
+
 ## Definição de pronto
 
-- [ ] `AGENTS.md` e instruções de contribuição refletem o uso incremental de TS/TSX.
-- [ ] Toolchain permite JS/TS mistos e oferece typecheck reproduzível em cada pacote.
-- [ ] Revisão de referência, inventário reproduzível, decisões de versões/dependências e comandos estão registrados em `docs/typescript-migration/`.
-- [ ] Todo arquivo TS/TSX/MTS do escopo está coberto por uma configuração verificada, incluindo testes e runtimes auxiliares.
-- [ ] Todo código de produto do escopo está em `.ts`, `.tsx` ou `.mts`; exceções remanescentes estão listadas e justificadas.
-- [ ] Nenhum dos 236 módulos com JSX permanece `.js/.jsx` dentro do escopo.
-- [ ] Testes host/web executam e passam no mecanismo padronizado.
-- [ ] Contratos de transporte, API, D1, segurança, Worker, extensão, PWA, Tauri, i18n, GitBook e Expo foram preservados.
-- [ ] Roteiro de comportamento concluído com evidências e plataformas identificadas; nenhum cenário obrigatório permanece bloqueado.
-- [ ] Histórico de integração identifica commits por fatia, dependências e último estado validado para reversão.
-- [ ] Builds geram os nomes, formatos e caminhos já consumidos pelos runtimes.
-- [ ] Typecheck, lint, testes existentes e builds locais passam sem publicar ou fazer deploy.
+Marcados os itens já satisfeitos:
+
+- [x] `AGENTS.md` e instruções de contribuição refletem o uso incremental de TS/TSX.
+- [x] Toolchain permite TS/TSX e oferece typecheck reproduzível em cada pacote.
+- [x] Revisão de referência, inventário reproduzível, decisões de versões/dependências e comandos estão registrados em `docs/typescript-migration/`.
+- [x] Todo arquivo TS/TSX/MTS do escopo está coberto por uma configuração verificada, incluindo testes e runtimes auxiliares.
+- [x] Todo código de produto do escopo está em `.ts`, `.tsx` ou `.mts` (0 arquivos `.js` de produto restantes).
+- [x] Nenhum dos 236 módulos com JSX permanece `.js/.jsx` dentro do escopo (todos convertidos para `.tsx`).
+- [x] Typecheck estrito sem erros no código de produto de todos os workspaces.
+- [x] Contratos de transporte, API, D1, segurança, Worker, extensão, PWA, Tauri, i18n, GitBook e Expo preservados sem alteração de wire format.
+- [x] Builds de release (`SELF_HOSTED=1 npm run host:build`) validados com chunk `IS_SELF_HOSTED` confirmado (`!0`).

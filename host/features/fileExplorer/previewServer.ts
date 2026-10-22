@@ -1,0 +1,165 @@
+// Static HTML preview — serves the HTML file's own directory over the agent HTTP
+// server so relative assets (css/js/img) resolve like a real website. Same trust
+// model as agent/proxy: an unguessable session id in the path is the only auth
+// (iframe subresources cannot carry headers), and sessions expire on their own.
+
+import fs from "fs";
+import path from "path";
+import { randomUUID } from "crypto";
+import type { ExplorerSocket } from "./fileExplorerSocket.js";
+import type { IncomingMessage, ServerResponse } from "http";
+import { MIME_BY_EXT, PREVIEW_SESSION_TTL_MS, MAX_PREVIEW_SESSIONS, PREVIEW_NAV_SOURCE } from "./constants.js";
+import { isSensitivePath } from "./pathGuard.js";
+
+// id → { root, realRoot, entry, expiresAt, timer }
+type PreviewSession = { id: string; realRoot: string; entry: string; expiresAt: number; timer: ReturnType<typeof setTimeout> | null };
+const sessions = new Map<string, PreviewSession>();
+
+function dropSession(id: string) {
+  const s = sessions.get(id);
+  if (!s) return;
+  clearTimeout(s.timer ?? undefined);
+  sessions.delete(id);
+}
+
+function touch(s: PreviewSession) {
+  clearTimeout(s.timer ?? undefined);
+  s.expiresAt = Date.now() + PREVIEW_SESSION_TTL_MS;
+  s.timer = setTimeout(() => dropSession(s.id), PREVIEW_SESSION_TTL_MS);
+}
+
+// Mint a session for the directory holding filePath. Called over the authenticated
+// socket, so this is the trust boundary — sensitive paths are rejected here.
+export function startPreviewSession(filePath: unknown) {
+  try {
+    if (!filePath || typeof filePath !== "string") return { success: false, error: "File path required" };
+    if (isSensitivePath(filePath)) return { success: false, error: "Access denied" };
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) return { success: false, error: "Not a file" };
+
+    const root = path.dirname(fs.realpathSync(filePath));
+    // Evict the oldest session when the cap is hit rather than refusing the preview.
+    while (sessions.size >= MAX_PREVIEW_SESSIONS) {
+      const oldest = sessions.keys().next().value as string;
+      dropSession(oldest);
+    }
+
+    const id = randomUUID();
+    const s: PreviewSession = { id, realRoot: root, entry: path.basename(filePath), expiresAt: 0, timer: null };
+    sessions.set(id, s);
+    touch(s);
+    return { success: true, sessionId: id, entry: s.entry };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export function endPreviewSession(sessionId: string | null | undefined) {
+  if (sessionId) dropSession(sessionId);
+}
+
+function endText(res: ServerResponse, code: number, msg: string) {
+  res.writeHead(code, { "Content-Type": "text/plain; charset=utf-8" });
+  res.end(msg);
+}
+
+function contentTypeFor(filePath: string) {
+  const ext = filePath.toLowerCase().split(".").pop() ?? "";
+  const mime = MIME_BY_EXT[ext] || "application/octet-stream";
+  // Text types need an explicit charset or the browser sniffs latin-1.
+  return /^(text\/|application\/(javascript|json))/.test(mime) ? `${mime}; charset=utf-8` : mime;
+}
+
+// Resolve a request path inside the session root; null when it escapes or misses.
+// The router hands us the still-percent-encoded pathname, so decode first.
+function resolveInside(s: PreviewSession, relPath: string) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(relPath);
+  } catch {
+    return null;
+  }
+  const abs = path.resolve(s.realRoot, "." + decoded.replace(/\\/g, "/"));
+  let real;
+  try {
+    real = fs.realpathSync(abs);
+  } catch {
+    return null;
+  }
+  // realpath also collapses symlinks — anything pointing outside the root stops here.
+  if (real !== s.realRoot && !real.startsWith(s.realRoot + path.sep)) return null;
+  // The root is only checked when the session is minted; a root near $HOME would
+  // otherwise expose ~/.ssh and friends to every subsequent asset request.
+  if (isSensitivePath(real)) return null;
+  return fs.statSync(real).isFile() ? real : null;
+}
+
+// The page runs in a sandboxed, opaque-origin iframe, so the viewer cannot read its
+// location to keep an address bar honest. This script is injected into served HTML to
+// report where the frame actually is — the only channel that survives the sandbox.
+// Kept tiny and self-contained: it must not disturb the page it rides along with.
+const NAV_SCRIPT = `<script>(function(){
+try{
+  var post=function(){try{parent.postMessage({source:${JSON.stringify(PREVIEW_NAV_SOURCE)},path:location.pathname+location.search+location.hash},"*")}catch(e){}};
+  post();
+  addEventListener("hashchange",post);
+  addEventListener("popstate",post);
+  // History is same-document navigation — no load event fires, so wrap the calls.
+  ["pushState","replaceState"].forEach(function(k){
+    var f=history[k];history[k]=function(){var r=f.apply(this,arguments);post();return r};
+  });
+}catch(e){}
+})();</script>`;
+
+// Serve HTML with the nav reporter appended. Buffered rather than streamed because the
+// injection changes the length; HTML previews are small, assets still stream.
+function sendHtml(res: ServerResponse, filePath: string) {
+  const body = fs.readFileSync(filePath, "utf8") + NAV_SCRIPT;
+  const buf = Buffer.from(body, "utf8");
+  res.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": buf.length,
+    "Cache-Control": "no-store",
+    "Access-Control-Allow-Origin": "*"
+  });
+  res.end(buf);
+}
+
+// Route handler for /preview/:sessionId/* — registered public in agent/index.js.
+export function handlePreviewRequest(_req: IncomingMessage, res: ServerResponse, { pathname }: { pathname: string }) {
+  const match = pathname.match(/^\/preview\/([0-9a-f-]+)(\/.*)?$/);
+  const s = match ? sessions.get(match[1]!) : null;
+  if (!s || !match) { endText(res, 404, "Preview session not found"); return; }
+
+  const filePath = resolveInside(s, match[2] || "/" + s.entry);
+  if (!filePath) { endText(res, 404, "Not found"); return; }
+
+  // Every hit keeps the session alive; the timer is the only cleanup path.
+  touch(s);
+
+  const type = contentTypeFor(filePath);
+  if (type.startsWith("text/html")) { sendHtml(res, filePath); return; }
+
+  res.writeHead(200, {
+    "Content-Type": type,
+    "Content-Length": fs.statSync(filePath).size,
+    // Saved edits must show on reload — never let the browser cache a stale asset.
+    "Cache-Control": "no-store",
+    // The sandboxed iframe runs from a null origin — let page-side fetch() read too.
+    "Access-Control-Allow-Origin": "*"
+  });
+  fs.createReadStream(filePath)
+    // Headers are already sent — a mid-stream failure can only tear down the socket.
+    .on("error", () => res.destroy())
+    .pipe(res);
+}
+
+export function setupPreviewHandlers(socket: ExplorerSocket) {
+  socket.on("preview:start", ({ filePath }: { filePath?: unknown }, callback?: (res: unknown) => void) => {
+    callback?.(startPreviewSession(filePath));
+  });
+  socket.on("preview:end", ({ sessionId }: { sessionId?: string }, callback?: (res: unknown) => void) => {
+    endPreviewSession(sessionId);
+    callback?.({ success: true });
+  });
+}

@@ -6,7 +6,7 @@
  * exported), so the real tree is never touched. The mirror keeps its .next cache between runs.
  */
 
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -35,6 +35,7 @@ function shouldCopy(src) {
 
 export function buildWebStatic() {
   console.log("🌐 Building web static bundle...");
+  execFileSync(process.execPath, [path.join(WEB_DIR, "scripts/buildBrowserAssets.mjs")], { stdio: "inherit" });
 
   // Drop everything but the cache so files deleted from web/ don't linger in the mirror
   fs.mkdirSync(MIRROR_DIR, { recursive: true });
@@ -47,6 +48,16 @@ export function buildWebStatic() {
     const src = path.join(WEB_DIR, name);
     if (!shouldCopy(src)) continue;
     fs.cpSync(src, path.join(MIRROR_DIR, name), { recursive: true, preserveTimestamps: true, filter: shouldCopy });
+  }
+
+  // The mirror is one directory deeper than web, so resolve inherited configs before moving them.
+  const tsconfigPath = path.join(MIRROR_DIR, "tsconfig.json");
+  if (fs.existsSync(tsconfigPath)) {
+    const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, "utf8"));
+    if (typeof tsconfig.extends === "string" && tsconfig.extends.startsWith(".")) {
+      tsconfig.extends = path.resolve(WEB_DIR, tsconfig.extends);
+      fs.writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2) + "\n");
+    }
   }
 
   // Tailwind v4 scans everything not gitignored, and only honors .gitignore inside a git repo;

@@ -6,7 +6,7 @@ const AGENT_PORT = 2208;
 
 export default defineConfig({
   root: "ui",
-  plugins: [preact(), obfuscator({ apply: "build", include: ["**/*.js"], options: browserPreset })],
+  plugins: [preact(), obfuscator({ apply: "build", include: ["**/*.{js,jsx,ts,tsx}"], options: browserPreset })],
   server: {
     port: 5173,
     proxy: {

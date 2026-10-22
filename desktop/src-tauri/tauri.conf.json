@@ -4,6 +4,9 @@
   "version": "3.0.40",
   "identifier": "cc.9remote.desktop",
   "build": {
+    "beforeBuildCommand": {
+      "script": "npm run build:frontend"
+    },
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173"
   },

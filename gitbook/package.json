@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev -p 3001",
     "prebuild": "node scripts/generateContent.js",
-    "build": "next build",
+    "build": "next build --webpack",
+    "pretypecheck": "node scripts/generateContent.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "preview": "npx serve out -p 8787",
     "start": "next start -p 3001",
     "deploy": "npm run build && npx wrangler pages deploy out --project-name=9remote-docs"

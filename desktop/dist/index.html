@@ -7,10 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <script>
-    // Apply saved theme before render to prevent flash (same key as agent UI)
-    document.documentElement.setAttribute("data-theme", localStorage.getItem("9remote-theme") || "dark");
-  </script>
+  <script src="./themeBootstrap.js"></script>
   <style>
     /* Design tokens — synced with agent/ui/src/index.css */
     :root {
@@ -231,40 +228,6 @@
     </div>
   </div>
 
-  <script>
-    // The Rust shell polls the agent and navigates this window once it is healthy —
-    // this page only reflects setup state (it cannot poll: cross-origin is blocked).
-    const status = document.getElementById("status");
-    const stage = document.getElementById("stage");
-
-    let failed = false;
-
-    function setStatus(msg) {
-      if (failed) return;
-      status.style.opacity = "0";
-      setTimeout(() => {
-        status.textContent = msg;
-        status.style.opacity = "1";
-      }, 150);
-    }
-
-    function setError(msg) {
-      failed = true;
-      stage.classList.add("failed");
-      status.style.opacity = "1";
-      status.textContent = msg;
-    }
-
-    async function initTauri() {
-      try {
-        if (!window.__TAURI__?.event?.listen) return;
-        await window.__TAURI__.event.listen("setup_progress", (e) => setStatus(e.payload));
-        await window.__TAURI__.event.listen("setup_ready", () => setStatus("Ready! Loading..."));
-        await window.__TAURI__.event.listen("setup_error", (e) => setError(e.payload));
-      } catch { /* ignore */ }
-    }
-
-    initTauri();
-  </script>
+  <script src="./tauriBootstrap.js"></script>
 </body>
 </html>

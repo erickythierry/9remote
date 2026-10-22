@@ -1,0 +1,38 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "@cloudflare/workers-types",
+      "node"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
+    "resolveJsonModule": true,
+    "incremental": true
+  },
+  "include": [
+    "app/api/**/*.ts",
+    "app/api/**/*.tsx",
+    "app/api/**/*.js",
+    "durable-objects/**/*.ts",
+    "durable-objects/**/*.js",
+    "hotRoutes.ts",
+    "hotRoutes.js",
+    "types/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".open-next",
+    ".next",
+    "test"
+  ]
+}

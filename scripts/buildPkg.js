@@ -35,6 +35,11 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+function sourceEntry(relativePath) {
+  const tsPath = path.join(SERVER_DIR, relativePath.replace(/\.js$/, ".ts"));
+  return fs.existsSync(tsPath) ? tsPath : path.join(SERVER_DIR, relativePath);
+}
+
 // Disabled: obfuscation triggers Defender false positive (Trojan:JS/NpmSteal)
 // function obfuscateFile(file) {
 //   const code = fs.readFileSync(file, "utf-8");
@@ -65,7 +70,7 @@ async function buildCli() {
   ensureDir(path.dirname(outfile));
   await esbuild.build({
     ...baseConfig,
-    entryPoints: [path.join(SERVER_DIR, "cli/index.js")],
+    entryPoints: [sourceEntry("cli/index.js")],
     outfile,
     external: ["node-pty", "sharp", "cloudflared", "@hurdlegroup/robotjs", "node-datachannel", "node-screenshots", "koffi", "systray", "fsevents", "@julusian/jpeg-turbo"],
   });
@@ -78,7 +83,7 @@ async function buildServer() {
   ensureDir(path.dirname(outfile));
   await esbuild.build({
     ...baseConfig,
-    entryPoints: [path.join(SERVER_DIR, "index.js")],
+    entryPoints: [sourceEntry("index.js")],
     outfile,
     external: ["node-pty", "sharp", "@hurdlegroup/robotjs", "node-datachannel", "node-screenshots", "koffi", "fsevents", "@julusian/jpeg-turbo"],
   });
@@ -91,7 +96,7 @@ async function buildDaemon() {
   ensureDir(path.dirname(outfile));
   await esbuild.build({
     ...baseConfig,
-    entryPoints: [path.join(SERVER_DIR, "features/terminal/ptyDaemon.js")],
+    entryPoints: [sourceEntry("features/terminal/ptyDaemon.js")],
     outfile,
     external: ["node-pty"],
   });
@@ -104,7 +109,7 @@ async function buildInstall() {
   ensureDir(path.dirname(outfile));
   await esbuild.build({
     ...baseConfig,
-    entryPoints: [path.join(SERVER_DIR, "cli/scripts/install.js")],
+    entryPoints: [sourceEntry("cli/scripts/install.js")],
     outfile,
     external: ["@hurdlegroup/robotjs"],
   });
@@ -178,7 +183,22 @@ function copyExtension() {
   const srcDir = path.join(SERVER_DIR, "extension");
   const destDir = path.join(DIST_DIR, "extension");
   if (!fs.existsSync(srcDir)) return;
-  fs.cpSync(srcDir, destDir, { recursive: true, filter: (src) => !src.endsWith(".DS_Store") });
+  fs.cpSync(srcDir, destDir, {
+    recursive: true,
+    filter: (src) => !src.endsWith(".DS_Store") && !src.endsWith(".ts") && path.basename(src) !== "tsconfig.json",
+  });
+  // The unpacked extension keeps its stable JavaScript asset names. TypeScript
+  // is only a source authoring format and must not be shipped raw to Chrome.
+  for (const name of ["background", "popup", "runner"]) {
+    const source = path.join(srcDir, `${name}.ts`);
+    if (!fs.existsSync(source)) continue;
+    const { code } = esbuild.transformSync(fs.readFileSync(source, "utf8"), {
+      loader: "ts",
+      target: "chrome135",
+      sourcefile: `${name}.ts`,
+    });
+    fs.writeFileSync(path.join(destDir, `${name}.js`), code);
+  }
   console.log(`✅ extension → host/dist/extension/`);
 }
 
