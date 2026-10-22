@@ -121,8 +121,9 @@ export default function SourceControlPanel({
     deep: boolean;
     scanDeeper: () => void;
   };
-  const { perRepo: livePerRepo } = useWorkspaceChangedCount(workspace, fileBus) as {
+  const { perRepo: livePerRepo, syncPerRepo } = useWorkspaceChangedCount(workspace, fileBus) as {
     perRepo: Record<string, number>;
+    syncPerRepo?: Record<string, { ahead?: number; behind?: number }>;
   };
 
   // Sections collapse state
@@ -257,6 +258,7 @@ export default function SourceControlPanel({
     const hasChildren = repo.children && repo.children.length > 0;
     const isExpanded = expandedNodes.has(repo.path);
     const count = countOf(repo);
+    const { ahead = 0, behind = 0 } = syncPerRepo?.[repo.path] || {};
     const displayName = repo.parentId
       ? repo.relPath?.split("/").pop() || repo.name
       : repo.relPath || repo.name;
@@ -302,6 +304,22 @@ export default function SourceControlPanel({
 
           {/* Right badges & actions */}
           <div className="flex items-center gap-1 shrink-0">
+            {ahead > 0 && (
+              <span
+                className="text-[10px] font-medium px-1.5 rounded-brand bg-brand-500/15 text-brand-500 normal-case tracking-normal shrink-0"
+                title={`${ahead} to push`}
+              >
+                ↑{ahead}
+              </span>
+            )}
+            {behind > 0 && (
+              <span
+                className="text-[10px] font-medium px-1.5 rounded-brand bg-surface-3 text-text-muted normal-case tracking-normal shrink-0"
+                title={`${behind} to pull`}
+              >
+                ↓{behind}
+              </span>
+            )}
             {repo.branch && (
               <span
                 className="flex items-center gap-1 text-[11px] text-text-muted normal-case truncate max-w-[110px]"
