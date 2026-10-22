@@ -99,6 +99,8 @@ export function toolResult({ id, name, output = "", error = "", parentToolUseId 
 const ACK_PATTERNS = [
   /Async agent launched successfully[^]*?agentId:\s*([A-Za-z0-9_-]+)/i,
   /Command running in background with ID:\s*([A-Za-z0-9_-]+)/i,
+  // A foreground Bash past its timeout: "...was moved to the background (ID: b6qj92wg4)".
+  /moved to the background \(ID:\s*([A-Za-z0-9_-]+)\)/i,
   // `Monitor` watches a command and returns at once: "Monitor started (task b301ffx4j,
   // timeout 600000ms). You will be notified on each event." Measured on this machine: 44
   // of these, every one closing its row immediately while the task it named kept running.

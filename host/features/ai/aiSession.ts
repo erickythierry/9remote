@@ -16,6 +16,7 @@ import { attachmentMeta } from "./aiAttachment.js";
 import { getLastOutputAt, touchOutput, OUTPUT_LIVE_WINDOW_MS } from "../terminal/statusManager.js";
 import { TURN_END_EVENTS } from "./aiStatus.js";
 import { saveAiPreference } from "./models.js";
+import { ClaudeTerminal, PERMISSION_GATE_PREFIX } from "./claudeTerminal.js";
 import { PATHS } from "../../lib/constants.js";
 import { createLogger } from "../../lib/logger.js";
 
@@ -324,6 +325,8 @@ export class AiSession {
   destroyed?: boolean;
   pendingResume?: string | null;
   restartPending?: boolean;
+  // Set when this claude chat drives the TUI in its own terminal instead of a headless CLI.
+  terminal?: ClaudeTerminal | null;
   _seedAttachmentOffset?: () => any;
   _readAttachments?: () => any;
 
@@ -578,6 +581,11 @@ export class AiSession {
   }
 
   initAdapter() {
+    if (this.options.tuiTerminal && this.engine === AI_ENGINES.CLAUDE) {
+      this.terminal?.dispose();
+      this.terminal = new ClaudeTerminal(this);
+      return this.terminal.start().then(() => null);
+    }
     // Handlers bind to the adapter that owns them and stand down once a newer one replaces it.
     let mine: any = null;
     const onEvent = (event: string, data?: any) => {
@@ -1205,6 +1213,7 @@ export class AiSession {
   }
 
   sendPrompt(prompt: string, attachments: any = null) {
+    if (this.terminal) return this._sendToTerminal(prompt, attachments);
     // /clear is a host-side reset, not a message.
     if (String(prompt).trim() === "/clear") {
       // Refused mid-turn — rebuilding the adapter would kill the turn on screen.
@@ -1288,6 +1297,12 @@ export class AiSession {
   }
 
   resolvePermission(requestId: string | number, behavior: string, message = "") {
+    // A skipped question goes back to the TUI's own dialog; a permission takes the chat's decision.
+    if (this.terminal?.questions.has(String(requestId))) {
+      const gate = String(requestId);
+      if (gate.startsWith(PERMISSION_GATE_PREFIX)) return this.terminal.answer(gate, { behavior: behavior === "allow" ? "allow" : "deny", message });
+      return this.terminal.answer(gate, null);
+    }
     // Only an explicit false means refused — engines with no gate of their own return undefined.
     const handled = this.adapter?.resolvePermission?.(requestId, behavior, message);
     if (handled === false) return false;
@@ -1297,6 +1312,7 @@ export class AiSession {
   }
 
   resolveQuestion(requestId: string | number, answers: any) {
+    if (this.terminal) return this.terminal.answer(String(requestId), answers || {});
     const handled = this.adapter?.resolveQuestion?.(requestId, answers);
     if (handled === false) return false;
     this.emitNormalized("permission_resolved", { requestId, behavior: "allow" });
@@ -1364,6 +1380,7 @@ export class AiSession {
       }
       return;
     }
+    if (this.terminal) return this._applyTerminalOptions(rest);
     // Forward only the validated id, and replay the restart's fetch — or a mode change holds every line forever.
     const fetch = this.adapter?.setOptions?.({ ...opts, resume });
     if (fetch?.then) fetch.then((f: any) => this._replay(f));
@@ -1380,6 +1397,7 @@ export class AiSession {
     this.restartPending = false;
     const resume = this.pendingResume || null;
     this.pendingResume = null;
+    if (this.terminal) return this._applyTerminalOptions({ model: this.model, effort: this.effort });
     const fetch = this.adapter?.setOptions?.({ mode: this.permissionMode, model: this.model, effort: this.effort, ...(resume ? { resume } : {}) });
     if (fetch?.then) fetch.then((f: any) => this._replay(f));
   }
@@ -1389,7 +1407,34 @@ export class AiSession {
     return runEngineDoctor(this.engine, this.cwd, this.options.mock);
   }
 
+  // The running TUI switches by its own commands; init tells every pane the new pick.
+  _applyTerminalOptions(opts: { model?: string; effort?: string }) {
+    this.terminal!.applyOptions(opts).catch((err: any) => logger.warn(`[ai] ${this.id} options: ${err.message}`));
+    this.emitNormalized("init", { ...this.metadata(), effort: this.effort, permissionMode: this.permissionMode });
+    this._saveKvState();
+    this.flushSaveSnapshot();
+  }
+
+  // The TUI owns the turn and its own queue; the chat only types and marks the turn started.
+  _sendToTerminal(prompt: string, attachments: any) {
+    const terminal = this.terminal!;
+    this.lastPrompt = prompt;
+    if (!this.isTurnRunning) {
+      this.isTurnRunning = true;
+      this.turnStartedAt = Date.now();
+    }
+    this.emitNormalized("user_message", { text: prompt, attachments: attachmentMeta(attachments) });
+    terminal.send(prompt, attachments).catch((err: any) => {
+      this.emitNormalized("prompt_refused", { text: prompt, reason: String(err?.message || err) });
+    });
+  }
+
   stop() {
+    if (this.terminal) {
+      if (!this.terminal.interrupt()) return false;
+      this.emitNormalized("stopped", {});
+      return true;
+    }
     // A control request keeps the CLI alive; a signal is only the fallback when it cannot be written.
     const sent = this.adapter?.interrupt?.();
     const signalled = sent ? false : this.adapter?.signal?.("SIGINT");
@@ -1479,6 +1524,8 @@ export class AiSession {
   }
 
   destroy() {
+    // The TUI is the terminal's process, so closing the chat leaves it running there.
+    this.terminal?.dispose();
     this.clearAllAsyncWatchdogs();
     if (this._drainTimer) { clearTimeout(this._drainTimer); this._drainTimer = null; }
     this.promptQueue = [];

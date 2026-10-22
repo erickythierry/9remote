@@ -45,6 +45,7 @@ import { handleSelfHostedConnect, handleSelfHostedTempKeyRemove, handleSelfHoste
 import { handleApprove, handleReject, handlePending, handleApproved, handleRemove, handleDisconnect, handleRejected, handleApproveRejected, handleClearRejected, handleGetAutoApprove, handleSetAutoApprove, handleSetLabel } from "./api/device.js";
 import { handleNotifyPost, handleNotifyGet } from "./api/notify.js";
 import { handleMcpPost } from "./api/mcp.js";
+import { handleQuestionPost } from "./api/question.js";
 import { handleSleepInhibitGet, handleSleepInhibitPost } from "./api/sleepInhibit.js";
 import { handleRemoteEnabledGet, handleRemoteEnabledPost } from "./api/remote.js";
 import { handleDesktopUnlockGet, handleDesktopUnlockInstall, handleDesktopUnlockType, handleDesktopUnlockUninstall } from "./api/desktopUnlock.js";
@@ -264,6 +265,8 @@ const ROUTES: Route[] = [
   { path: "/api/local-token",      method: "GET",  handler: handleLocalToken },
   // MCP: the AI CLI runs on this host, so the endpoint stays localhost-only (+ bearer token)
   { path: MCP.PATH,                method: "POST", handler: handleMcpPost },
+  // Claude's AskUserQuestion hook holds here until the chat answers (api/question.ts).
+  { path: "/api/claude/question",  method: "POST", handler: handleQuestionPost },
   { path: "/api/browser-use",      method: "POST", handler: handleBrowserUsePost },
   { path: "/api/ui/state",         method: "GET",  handler: handleStateGet },
   { path: "/api/ui/state",         method: "POST", handler: handleStatePost },

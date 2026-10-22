@@ -58,6 +58,8 @@ export interface TerminalStoreState {
   artifactsBySession: Record<string, ArtifactItem[]>;
   hiddenPaneSessionIds: string[];
   agentBySession: Record<string, string>;
+  // Claude chat tabs showing their terminal instead of the chat (both stay mounted).
+  terminalViewBySession: Record<string, boolean>;
   agentHistory: Record<string, { at: number; sessions: AgentHistoryRow[] }>;
 
   setActiveWorkspaceId(workspaceId: string | null): void;
@@ -163,6 +165,7 @@ export interface TerminalStoreState {
   setAgentHistory(cwd: string, sessions: AgentHistoryRow[]): void;
   invalidateAgentHistory(): void;
   setSessionAgent(sessionId: string, agentId: string): void;
+  setTerminalView(sessionId: string, on: boolean): void;
   queueStartup(sessionId: string, command: string): void;
   consumeStartup(sessionId: string): string | null;
   pushArtifact(sessionId: string, item: ArtifactItem): void;
@@ -201,5 +204,6 @@ export type ThemeSlice = Pick<TerminalStoreState,
 export type AgentSlice = Pick<TerminalStoreState,
   | "agentCaps" | "setAgentCaps" | "artifactEnabled" | "setArtifactEnabled" | "mcpClients" | "setMcpClients" | "agentClisBy"
   | "setAgentClis" | "agentHistory" | "setAgentHistory" | "invalidateAgentHistory" | "agentBySession" | "setSessionAgent"
+  | "terminalViewBySession" | "setTerminalView"
   | "pendingStartup" | "queueStartup" | "consumeStartup" | "artifactsBySession" | "pushArtifact" | "removeArtifact"
 >;

@@ -51,6 +51,7 @@ export const useTerminalStore = create<TerminalStoreState>()(
         viewStack: state.viewStack,
         openedSessions: state.openedSessions,
         agentBySession: state.agentBySession,
+        terminalViewBySession: state.terminalViewBySession,
         activeWorkspaceId: state.activeWorkspaceId,
         collapsedWorkspaces: state.collapsedWorkspaces,
         webglEnabled: state.webglEnabled,

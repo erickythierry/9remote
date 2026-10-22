@@ -8,7 +8,7 @@ import { agentById } from "./agentCatalog.js";
 import { broadcast } from "../../transport/broadcast.js";
 import { createLogger } from "../../lib/logger.js";
 import {
-  getConversation, getSessionAgent, setSessionAgent, setConversationId
+  getConversation, getSessionAgent, setSessionAgent, setConversationId, clearSessionAgent
 } from "./statusManager.js";
 import { MODE, engineFromAgent } from "./conversationModes.js";
 import { surfaceAgent } from "./customAgents.js";
@@ -64,10 +64,16 @@ export async function setSessionMode(sessionId: string, mode: string, { sessions
   logger.info(`session ${sessionId}: ${mode} ← ${conv?.agent || session.agent} ${conv?.id || "fresh"}`);
   // Set the surface first: it clears any conversation belonging to another CLI, and
   // the re-record below is what restores it — under the surface now running it.
+  // The chat-tab guard in setSessionAgent ignores a detected bare claude; this switch is explicit.
+  if (engine === "claude" && mode === MODE.TERMINAL) clearSessionAgent(sessionId);
   setSessionAgent(sessionId, agentId);
   session.agent = agentId;
 
-  if (mode === MODE.UI) {
+  if (engine === "claude") {
+    // Claude's chat drives the TUI in this terminal (ai/claudeTerminal.ts), so a switch only
+    // moves the surface; the chat object goes, and the TUI keeps running under the new one.
+    globalAiManager.destroySession(sessionId);
+  } else if (mode === MODE.UI) {
     enterUi(sessionId, session);
     await new Promise((r) => setTimeout(r, 400));
   } else {

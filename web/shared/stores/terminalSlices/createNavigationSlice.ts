@@ -152,6 +152,7 @@ export const createNavigationSlice = (set: SliceSet, get: SliceGet): NavigationS
     const { [sessionId]: _draft, ...drafts } = state.drafts;
     const { [sessionId]: _startup, ...pendingStartup } = state.pendingStartup;
     const { [sessionId]: _agent, ...agentBySession } = state.agentBySession;
+    const { [sessionId]: _view, ...terminalViewBySession } = state.terminalViewBySession;
     const agentHistory = staleAgentHistory(state.agentHistory, (row) =>
       row.openSessionId === sessionId ? { ...row, openSessionId: null } : row
     );
@@ -161,6 +162,7 @@ export const createNavigationSlice = (set: SliceSet, get: SliceGet): NavigationS
       drafts,
       pendingStartup,
       agentBySession,
+      terminalViewBySession,
       agentHistory
     };
   }),

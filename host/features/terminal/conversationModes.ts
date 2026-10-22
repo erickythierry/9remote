@@ -30,6 +30,8 @@ const keyOf = (agentId: string, conversationId: string) => `${baseOfAgentId(agen
 // The UI runs the base engine's CLI underneath, so it is not a mode of its own.
 export const modeFromAgent = (agentId: string | null | undefined): ConversationMode => (agentId?.endsWith("-ui") ? MODE.UI : MODE.TERMINAL);
 export const engineFromAgent = (agentId: string | null | undefined): string | null | undefined => baseOfAgentId(agentId);
+// A claude chat tab: its chat drives the TUI in the tab's own terminal (ai/claudeTerminal.ts).
+export const isTuiChatSurface = (agentId: string | null | undefined): boolean => modeFromAgent(agentId) === MODE.UI && engineFromAgent(agentId) === "claude";
 
 export function getConversationMode(agentId: string | null | undefined, conversationId: string | null | undefined): ConversationMode | null {
   if (!agentId || !conversationId) return null;

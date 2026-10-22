@@ -62,6 +62,13 @@ export const createAgentSlice = (set: SliceSet, get: SliceGet): AgentSlice => ({
     };
   }),
 
+  terminalViewBySession: {},
+  setTerminalView: (sessionId, on) => set((state) => {
+    if (!!state.terminalViewBySession[sessionId] === on) return state;
+    const { [sessionId]: _, ...rest } = state.terminalViewBySession;
+    return { terminalViewBySession: on ? { ...rest, [sessionId]: true } : rest };
+  }),
+
   // Startup commands
   pendingStartup: {},
   queueStartup: (sessionId, cmd) => set((state) => ({

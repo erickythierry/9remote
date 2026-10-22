@@ -108,3 +108,18 @@ export const OPENCODE_TITLE_FETCH_DELAY_MS = 5000;
 export const OPENCODE_POLL_MS = 800;
 // The v1 prompt call resolves only when the whole agent loop ends.
 export const OPENCODE_PROMPT_TIMEOUT_MS = 600000;
+
+// Claude chat over the TUI in its own terminal (claudeTerminal.ts).
+// Transcript size poll — the TUI writes whole records, so this is the chat's refresh rate.
+export const CLAUDE_TERMINAL_POLL_MS = 500;
+// How long a launched TUI may take before a prompt sent to it is refused.
+export const CLAUDE_TERMINAL_BOOT_MS = 20000;
+// PTY silence that marks the TUI as drawn and reading its input box.
+export const CLAUDE_TERMINAL_SETTLE_MS = 800;
+// Gap between the typed text and Enter, so the TUI's autocomplete has the whole line.
+export const CLAUDE_TERMINAL_ENTER_MS = 150;
+// Live tail of a background shell's output file, drawn in its running row.
+export const CLAUDE_SHELL_TAIL_BYTES = 16 * 1024;
+export const CLAUDE_SHELL_TAIL_LINES = 200;
+// Claude's AskUserQuestion hook waits this long for the chat's answer, then the TUI asks itself.
+export const CLAUDE_QUESTION_WAIT_MS = 10 * 60 * 1000;

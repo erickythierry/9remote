@@ -19,6 +19,9 @@ export interface AgentLaunchConfig {
 
 export const baseAgentId = (agentId: string | null | undefined): string => (agentId || "").replace(/-ui$/, "").split(CUSTOM_AGENT_SEP)[0];
 
+// A claude chat tab: the chat drives the TUI in the tab's own terminal, so both views stay live.
+export const isClaudeChat = (agentId: string | null | undefined): boolean => !!agentId?.endsWith("-ui") && baseAgentId(agentId) === "claude";
+
 export function agentIconUrl(agentId: string | null | undefined): string | null {
   if (!agentId || agentId === "null" || agentId === "undefined") return null;
   const canonical = baseAgentId(agentId);

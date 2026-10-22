@@ -38,7 +38,7 @@ function slimAttachmentRecord(record: any): { attachment: Record<string, any> } 
   return { attachment };
 }
 
-function findTranscript(cwd: string, cliSessionId: string): string | null {
+export function findTranscript(cwd: string, cliSessionId: string): string | null {
   const projectsDir = path.join(os.homedir(), ".claude", "projects");
   const safeCwd = String(cwd).replace(/[/\\:]/g, "-");
   let p = path.join(projectsDir, safeCwd, `${cliSessionId}.jsonl`);
@@ -77,7 +77,7 @@ export const isTypedTurn = (record: any): boolean => {
 };
 
 // A rewind only moves the leafUuid pointer and leaves dropped turns in the file, and the live branch can be non-contiguous — so keep the parentUuid chain, never a line range.
-function liveTurns(lines: string[], leafOverride: string | null = null): Set<string> | null {
+export function liveTurns(lines: string[], leafOverride: string | null = null): Set<string> | null {
   let leaf = leafOverride;
   // leafOverride: the CLI answers a rewind ~50ms before it flushes the new last-prompt — read as-if-written in that window.
   let lastPointer = -1;
@@ -122,6 +122,97 @@ export function liveTranscript(file: string, leafOverride: string | null = null)
   return { lines, live: liveTurns(lines, leafOverride) };
 }
 
+type ClaudeEvent = { event: string; data: any };
+
+// One transcript record into pane events; the returned fn keeps tool calls across records so a result finds its call.
+// turnEnds=false for a live tail, where the Stop hook (not each assistant record) ends the turn.
+export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
+  // Tool calls awaiting their result, by tool_use id — see DIFF_TOOL_SET.
+  const toolCalls = new Map<string, { name: string; input: any }>();
+  // A notification ends the tool row it names — on this door the settle is the row's only end (no watchdog in a replay).
+  const pushTaskNotification = (task: any) => {
+    push(task);
+    const toolUseId = task.data.record.tool_use_id;
+    // Same shape armAsyncWatchdog settles with, so both doors close the row the same way.
+    if (toolUseId) push({ event: "tool_result", data: { id: toolUseId, status: "done", async: true } });
+  };
+  return (d: any, turnEnds = true) => {
+    // Read before the injection guard drops it: the only end signal for a task, or a replay shows it running forever.
+    if (d.type === "user" && d.message) {
+      const task = taskNotificationFrom(d);
+      if (task) pushTaskNotification(task);
+    }
+    // Sidechain/injected records are not typed turns — drawing them miscounts the rewind indices and ends the log mid-turn.
+    if (d.type === "user" && d.message && !d.isSidechain && !isClaudeInjectedTurn(d)) {
+      // Through textOf: a typed turn may be a plain string, and .find on a string throws.
+      const text = textOf(d);
+      if (text && !isInjectedTurn(text)) {
+        push({ event: "user_message", data: { text } });
+      }
+      // A tool result is a `user` record too, and only ever the array form.
+      const content = Array.isArray(d.message.content) ? d.message.content : [];
+      const toolResults = content.filter((c: any) => c.type === "tool_result");
+      for (const tr of toolResults) {
+        const output = typeof tr.content === "string" ? tr.content : JSON.stringify(tr.content);
+        // Person-visible text: a <persisted-output> frame starts at char 0 of the TEXT, never the serialized form.
+        const resultText = typeof tr.content === "string"
+          ? tr.content
+          : (tr.content || []).map((c: any) => (typeof c === "string" ? c : c?.text || "")).join("");
+        // The flag is the whole answer on both doors — a text match only ever added false errors.
+        const isError = Boolean(tr.is_error);
+        const call = toolCalls.get(tr.tool_use_id);
+        toolCalls.delete(tr.tool_use_id);
+        // A launch ack is not a result — same rule as the live door, or a reload shows running work as finished.
+        const async = isError ? null : asyncHandle(output, call?.name || "");
+        push(toolResult({
+            id: tr.tool_use_id,
+            // The result carries only the id — the name comes from the call it answers.
+            name: call?.name || "",
+            // Same collapse the live door applies, so a reopened chat shows the line the pane showed live.
+            output: isError ? output : collapsePersisted(resultText),
+            error: isError ? output : "",
+            // `running`, not `done` — the work outlives the call, and the handle lets a later record settle it.
+            ...(async ? { status: "running", async: true, handle: async.id } : null)
+          }));
+        // A rejected edit never reached the disk, so it paints no diff — the tool row stays to say it was refused.
+        if (call && !isError && DIFF_TOOL_SET.has(call.name)) {
+          const diff = buildEditDiff(call.name, call.input);
+          if (diff) push({ event: "diff", data: diff });
+        }
+      }
+    } else if (d.type === "attachment") {
+      // Harness-injected context, slimmed to what the pane can ever draw (see slimAttachmentRecord).
+      push({
+        event: "cli_event",
+        data: { type: "attachment", subtype: d.attachment?.type || "", record: slimAttachmentRecord(d) }
+      });
+    } else if (d.type === "queue-operation") {
+      // A notification queued mid-turn is removed at the turn's end, never re-delivered as a user record — this is its only door.
+      const task = taskNotificationFrom(d);
+      if (task) pushTaskNotification(task);
+    } else if (d.type === "system") {
+      // Carried whole under its own name — the pane (noticeFrom) decides what to show.
+      push({
+        event: "cli_event",
+        data: { type: "system", subtype: d.subtype || "", record: d }
+      });
+    } else if (d.type === "assistant" && d.message) {
+      for (const item of d.message.content || []) {
+        if (item.type === "thinking" && item.thinking) {
+          push({ event: "thinking", data: { text: item.thinking } });
+        } else if (item.type === "tool_use") {
+          // Held for its result: the diff is built from this call's input — the result carries only the id.
+          toolCalls.set(item.id, { name: item.name, input: item.input });
+          push(toolStart({ id: item.id, name: item.name, input: item.input }));
+        } else if (item.type === "text" && item.text) {
+          push({ event: "delta", data: { text: item.text } });
+        }
+      }
+      if (turnEnds) push({ event: "turn_complete", data: { stats: {} } });
+    }
+  };
+}
+
 // leafOverride: read as if that pointer were already flushed — see liveTurns.
 export function recoverFromClaudeTranscript(cwd: string, cliSessionId: string, startSeq: number = 1, leafOverride: string | null = null): any[] | null {
   if (!cwd || !cliSessionId) return null;
@@ -132,113 +223,27 @@ export function recoverFromClaudeTranscript(cwd: string, cliSessionId: string, s
   try {
     // Same rule the rewind list reads — see liveTranscript.
     const { lines, live } = liveTranscript(resolved, leafOverride);
-    const events: any[] = [];
-    // Tool calls awaiting their result, by tool_use id — see DIFF_TOOL_SET.
-    const toolCalls = new Map<string, { name: string; input: any }>();
     let seq = startSeq;
-    let cut = false;   // set when the walk passes a turn the branch no longer holds
-
-    // A notification ends the tool row it names — on this door the settle is the row's only end (no watchdog in a replay).
-    const pushTaskNotification = (task: any) => {
-      events.push({ seq: seq++, ...task });
-      const toolUseId = task.data.record.tool_use_id;
-      if (toolUseId) {
-        // Same shape armAsyncWatchdog settles with, so both doors close the row the same way.
-        events.push({ seq: seq++, event: "tool_result", data: { id: toolUseId, status: "done", async: true } });
-      }
-    };
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const d = JSON.parse(line);
-        // A dropped turn takes its answer with it; the cuts interleave, so follow the turns, not one cut point.
-        if (live && isTypedTurn(d)) cut = !live.has(d.uuid);
-        if (cut) continue;
-        // Read before the injection guard drops it: the only end signal for a task, or a replay shows it running forever.
-        if (d.type === "user" && d.message) {
-          const task = taskNotificationFrom(d);
-          if (task) pushTaskNotification(task);
-        }
-        // Sidechain/injected records are not typed turns — drawing them miscounts the rewind indices and ends the log mid-turn.
-        if (d.type === "user" && d.message && !d.isSidechain && !isClaudeInjectedTurn(d)) {
-          // Through textOf: a typed turn may be a plain string, and .find on a string throws.
-          const text = textOf(d);
-          if (text && !isInjectedTurn(text)) {
-            events.push({ seq: seq++, event: "user_message", data: { text } });
-          }
-          // A tool result is a `user` record too, and only ever the array form.
-          const content = Array.isArray(d.message.content) ? d.message.content : [];
-          const toolResults = content.filter((c: any) => c.type === "tool_result");
-          for (const tr of toolResults) {
-            const output = typeof tr.content === "string" ? tr.content : JSON.stringify(tr.content);
-            // Person-visible text: a <persisted-output> frame starts at char 0 of the TEXT, never the serialized form.
-            const resultText = typeof tr.content === "string"
-              ? tr.content
-              : (tr.content || []).map((c: any) => (typeof c === "string" ? c : c?.text || "")).join("");
-            // The flag is the whole answer on both doors — a text match only ever added false errors.
-            const isError = Boolean(tr.is_error);
-            const call = toolCalls.get(tr.tool_use_id);
-            toolCalls.delete(tr.tool_use_id);
-            // A launch ack is not a result — same rule as the live door, or a reload shows running work as finished.
-            const async = isError ? null : asyncHandle(output, call?.name || "");
-            events.push({
-              seq: seq++,
-              ...toolResult({
-                id: tr.tool_use_id,
-                // The result carries only the id — the name comes from the call it answers.
-                name: call?.name || "",
-                // Same collapse the live door applies, so a reopened chat shows the line the pane showed live.
-                output: isError ? output : collapsePersisted(resultText),
-                error: isError ? output : "",
-                // `running`, not `done` — the work outlives the call, and the handle lets a later record settle it.
-                ...(async ? { status: "running", async: true, handle: async.id } : null)
-              })
-            });
-            // A rejected edit never reached the disk, so it paints no diff — the tool row stays to say it was refused.
-            if (call && !isError && DIFF_TOOL_SET.has(call.name)) {
-              const diff = buildEditDiff(call.name, call.input);
-              if (diff) events.push({ seq: seq++, event: "diff", data: diff });
-            }
-          }
-        } else if (d.type === "attachment") {
-          // Harness-injected context, slimmed to what the pane can ever draw (see slimAttachmentRecord).
-          events.push({
-            seq: seq++,
-            event: "cli_event",
-            data: { type: "attachment", subtype: d.attachment?.type || "", record: slimAttachmentRecord(d) }
-          });
-        } else if (d.type === "queue-operation") {
-          // A notification queued mid-turn is removed at the turn's end, never re-delivered as a user record — this is its only door.
-          const task = taskNotificationFrom(d);
-          if (task) pushTaskNotification(task);
-        } else if (d.type === "system") {
-          // Carried whole under its own name — the pane (noticeFrom) decides what to show.
-          events.push({
-            seq: seq++,
-            event: "cli_event",
-            data: { type: "system", subtype: d.subtype || "", record: d }
-          });
-        } else if (d.type === "assistant" && d.message) {
-          for (const item of d.message.content || []) {
-            if (item.type === "thinking" && item.thinking) {
-              events.push({ seq: seq++, event: "thinking", data: { text: item.thinking } });
-            } else if (item.type === "tool_use") {
-              // Held for its result: the diff is built from this call's input — the result carries only the id.
-              toolCalls.set(item.id, { name: item.name, input: item.input });
-              events.push({ seq: seq++, ...toolStart({ id: item.id, name: item.name, input: item.input }) });
-            } else if (item.type === "text" && item.text) {
-              events.push({ seq: seq++, event: "delta", data: { text: item.text } });
-            }
-          }
-          events.push({ seq: seq++, event: "turn_complete", data: { stats: {} } });
-        }
-      } catch {}
-    }
-
+    const events: any[] = [];
+    replayClaudeLines(lines, live, claudeRecordParser((ev) => events.push({ seq: seq++, ...ev })));
     return events.length > 0 ? events : null;
   } catch {
     return null;
+  }
+}
+
+// The branch walk over whole lines; the parser is the caller's so a live tail can keep its tool-call memory.
+export function replayClaudeLines(lines: string[], live: Set<string> | null, parse: (d: any) => void) {
+  let cut = false;   // set when the walk passes a turn the branch no longer holds
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const d = JSON.parse(line);
+      // A dropped turn takes its answer with it; the cuts interleave, so follow the turns, not one cut point.
+      if (live && isTypedTurn(d)) cut = !live.has(d.uuid);
+      if (cut) continue;
+      parse(d);
+    } catch {}
   }
 }
 

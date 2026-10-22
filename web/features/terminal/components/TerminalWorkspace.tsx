@@ -27,7 +27,7 @@ import TerminalBeam from "@/shared/components/ui/TerminalBeam";
 import TerminalEmptyState from "@/features/terminal/components/TerminalEmptyState";
 import AiPaneView from "@/features/ai/components/AiPaneView";
 import { AI_UI_OPTIONS } from "@/features/ai/constants";
-import { baseAgentId } from "@/features/terminal/constants/agentCli";
+import { baseAgentId, isClaudeChat } from "@/features/terminal/constants/agentCli";
 import ErrorBoundary from "@/shared/components/ui/ErrorBoundary";
 import useClampedMenu from "@/shared/hooks/useClampedMenu";
 import { vibrate } from "@/shared/utils/vibration";
@@ -235,6 +235,7 @@ function TerminalWorkspace({
   // tabs keep the workspace root, so a deep cwd must not blank their repo scan.
   const rightPanelRoots = useTerminalStore((s) => s.rightPanelRoots);
   const agentBySession = useTerminalStore((s) => s.agentBySession);
+  const terminalViewBySession = useTerminalStore((s) => s.terminalViewBySession);
   const fullModes = useTerminalStore((s) => s.fullModes || {});
   const fullMode = fullModes[activeWorkspaceId ?? UNGROUPED_KEY] ?? false;
   const hiddenPaneSessionIds = useTerminalStore((s) => s.hiddenPaneSessionIds || []);
@@ -522,8 +523,10 @@ function TerminalWorkspace({
     // Resolved from the engine registry, not a hardcoded id list: adding an engine
     // must not need a second edit here (antigravity-ui rendered as a terminal).
     const aiUi = sessionAgent?.endsWith("-ui") ? AI_UI_OPTIONS.find((u) => u.id === `${baseAgentId(sessionAgent)}-ui`) : null;
-    if (aiUi) {
-      return (
+    // A claude chat tab keeps its terminal mounted too: it runs the TUI the chat drives.
+    const dual = !!aiUi && isClaudeChat(sessionAgent);
+    const showTerminal = dual && !!terminalViewBySession[sessionId];
+    const chat = aiUi && (
         <ErrorBoundary key={sessionId} title="AI Chat Pane">
           <AiPaneView
             sessionId={sessionId}
@@ -532,8 +535,8 @@ function TerminalWorkspace({
             sessionName={session?.name}
             bus={busFor(sessionId)}
             fileBus={paneFileBus}
-            isVisible={isVisible}
-            isFocused={isFocused}
+            isVisible={isVisible && !showTerminal}
+            isFocused={isFocused && !showTerminal}
             isDesktop={isDesktop}
             bgIndex={bgIndex}
             onActivate={() => nav.handleSelectSession(sessionId)}
@@ -543,9 +546,9 @@ function TerminalWorkspace({
             onOpenArtifact={onOpenArtifact}
           />
         </ErrorBoundary>
-      );
-    }
-    return (
+    );
+    if (aiUi && !dual) return chat;
+    const terminal = (
     <TerminalPane
       // Session's own workspace — the folder button opens the right panel's files tab
       // keyed to it, not to whichever workspace currently owns the panel.
@@ -555,8 +558,8 @@ function TerminalWorkspace({
       fileBus={paneFileBus}
       connected={isConnected}
       sessionId={sessionId}
-      isVisible={isVisible}
-      isFocused={isFocused}
+      isVisible={isVisible && (!dual || showTerminal)}
+      isFocused={isFocused && (!dual || showTerminal)}
       onActivate={nav.handleSelectSession}
       onRegisterApi={registerPaneApi}
       onPasteFallback={handlePasteFallback}
@@ -567,6 +570,13 @@ function TerminalWorkspace({
       onOpenRemote={onOpenRemote}
       onOpenMobile={onOpenMobile}
     />
+    );
+    if (!dual) return terminal;
+    return (
+      <>
+        <div className={`w-full h-full ${showTerminal ? "hidden" : ""}`}>{chat}</div>
+        <div className={`w-full h-full ${showTerminal ? "" : "hidden"}`}>{terminal}</div>
+      </>
     );
   };
 
@@ -857,7 +867,7 @@ function TerminalWorkspace({
           )}
 
           {/* Mobile: one shared keyboard below the active pane (desktop renders its own per pane) */}
-          {!isDesktop && activeSessionId && !agentBySession[activeSessionId]?.endsWith("-ui") && renderKeyboard(activeSessionId)}
+          {!isDesktop && activeSessionId && (!agentBySession[activeSessionId]?.endsWith("-ui") || terminalViewBySession[activeSessionId]) && renderKeyboard(activeSessionId)}
 
         </div>
 

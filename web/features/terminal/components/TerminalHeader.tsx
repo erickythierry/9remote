@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ChevronLeft, ChevronRight, Menu, PanelLeft, PanelRight, Settings, Monitor, Smartphone, Plus, Pencil, Trash2, X, Globe, RotateCw, Github, Star, Bot, Zap, Check, Image as ImageIcon, Sparkles, Maximize2, Minimize2, Eye, EyeOff, Columns2, Link2, Loader2
+  ChevronLeft, ChevronRight, Menu, PanelLeft, PanelRight, Settings, Monitor, Smartphone, Plus, Pencil, Trash2, X, Globe, RotateCw, Github, Star, Bot, Zap, Check, Image as ImageIcon, Sparkles, Maximize2, Minimize2, Eye, EyeOff, Columns2, Link2, Loader2, MessageSquare, Terminal
 } from "@/shared/components/ui/Icon";
 import NotificationsBell from "./NotificationsBell";
 import SessionStatusBadge from "./SessionStatusBadge";
@@ -34,7 +34,7 @@ import { sessionWorkspaceId, UNGROUPED_KEY } from "@/features/terminal/lib/paneL
 import { useDragReorder } from "@/features/terminal/hooks/useDragReorder";
 import { useGithubStars } from "@/shared/hooks/useGithubStars";
 import { GITHUB_REPO_URL } from "@/shared/constants/github";
-import { agentIconUrl, AGENT_ICON_CLS, baseAgentId } from "@/features/terminal/constants/agentCli";
+import { agentIconUrl, AGENT_ICON_CLS, baseAgentId, isClaudeChat } from "@/features/terminal/constants/agentCli";
 import { PANEL_HEADER_H_CLASS } from "@/shared/constants/layout";
 import JarvisView from "@/features/jarvis/components/JarvisView";
 import { useJarvisStore } from "@/shared/stores/jarvisStore";
@@ -210,6 +210,23 @@ function TerminalHeader({
   const tabAsUi = tabAgent?.endsWith("-ui");
   const tabSwitchable = isChatEngine(tabAgent);
   const tabSwitchReady = tabSwitchable && SWITCHABLE_STATES.has((tabMenu.sessionId ? sessionStatus[tabMenu.sessionId]?.state : null) || "idle");
+  // Chat | Terminal toggle for the active claude tab: both views run the same TUI, so nothing restarts.
+  const terminalViewBySession = useTerminalStore((s) => s.terminalViewBySession ?? NO_OBJ);
+  const setTerminalView = useTerminalStore((s) => s.setTerminalView);
+  const activeAgent = activeSessionId ? agentBySession[activeSessionId] : null;
+  const activeIsClaudeChat = isClaudeChat(activeAgent);
+  const activeOnTerminal = !activeIsClaudeChat || !!(activeSessionId && terminalViewBySession[activeSessionId]);
+  const showViewToggle = !!activeSessionId && (activeIsClaudeChat || baseAgentId(activeAgent) === "claude");
+  const showActiveView = (terminal: boolean) => {
+    if (!activeSessionId) return;
+    vibrate();
+    // A plain claude terminal becomes a chat tab first; the host leaves its TUI running.
+    if (!terminal && !activeIsClaudeChat) {
+      connForSession(activeSessionId).bus?.emit("setSessionMode", { sessionId: activeSessionId, mode: "ui" },
+        (res: any) => { if (!res?.success) alert(res?.error || t("sessions.modeSwitchFailed")); });
+    }
+    setTerminalView(activeSessionId, terminal);
+  };
   const [tabDeleteConfirm, setTabDeleteConfirm] = useState<{ isOpen: boolean; sessionId: string | null; sessionName: string }>({ isOpen: false, sessionId: null, sessionName: "" });
   // Tab rename prompt (shared modal; inline input lost the iOS gesture window for focus)
   const [renameDialog, setRenameDialog] = useState<{ sessionId: string | null; name: string; value: string }>({ sessionId: null, name: "", value: "" });
@@ -790,6 +807,23 @@ function TerminalHeader({
           onSwitchSession={onSwitchSession}
           workspaces={workspaces}
         />
+      )}
+
+      {showViewToggle && (
+        <div className="flex items-center p-0.5 rounded-brand border border-border-subtle bg-surface-2/70 flex-shrink-0">
+          {[false, true].map((terminal) => (
+            <button
+              key={String(terminal)}
+              type="button"
+              onClick={() => showActiveView(terminal)}
+              aria-pressed={activeOnTerminal === terminal}
+              title={terminal ? t("sessions.openAsTerminal") : t("sessions.openAsUi")}
+              className={`p-1 rounded-[6px] transition duration-150 ${activeOnTerminal === terminal ? "bg-surface text-text shadow-sm" : "text-text-muted hover:text-text"}`}
+            >
+              {terminal ? <Terminal size={14} /> : <MessageSquare size={14} />}
+            </button>
+          ))}
+        </div>
       )}
 
       {/* Files / git / worktrees panel */}

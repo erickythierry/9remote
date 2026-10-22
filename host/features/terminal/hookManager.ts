@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { SERVER_PORT, PATHS as APP_PATHS, CLAUDE_SCROLLBACK_ENV, AI_TOOLS } from "../../lib/constants.js";
+import { CLAUDE_QUESTION_WAIT_MS } from "../ai/constants.js";
 import { writeJsonAtomic } from "../../lib/atomicFile.js";
 import { hookSessionIdKeys } from "./agentCatalog.js";
 
@@ -109,6 +110,19 @@ function writeJsonFile(filePath: string, data: unknown) {
   writeJsonAtomic(filePath, data, { mode: 0o644 });
 }
 
+// AskUserQuestion and permission dialogs go to the chat that drives this TUI (api/question.ts); outside a
+// 9remote chat the endpoint answers empty and the TUI asks as usual. Held up to the
+// endpoint's wait, so the hook timeout sits just above it. `&tool=` marks it as ours.
+const QUESTION_TIMEOUT_S = Math.ceil(CLAUDE_QUESTION_WAIT_MS / 1000) + 30;
+const gateEntry = (matcher: string): HookEntry => ({
+  matcher,
+  hooks: [{
+    type: "command",
+    command: `[ -n "$NINE_REMOTE_SESSION_ID" ] && command -v curl >/dev/null 2>&1 && curl -s --max-time ${QUESTION_TIMEOUT_S} -X POST -H "Content-Type: application/json" --data-binary @- "http://localhost:${SERVER_PORT}/api/claude/question?sessionId=$NINE_REMOTE_SESSION_ID&tool=claude&csid=hold" 2>/dev/null; true`,
+    timeout: QUESTION_TIMEOUT_S
+  }]
+});
+
 function applyClaudeEnv(settings: HookSettings) {
   const backup: Record<string, string | null> = {};
   const env: Record<string, string> = settings.env || {};
@@ -130,7 +144,7 @@ function restoreClaudeEnv(settings: HookSettings) {
 }
 
 // ─── Kind: json-nested (Claude-style hooks object) ──────────────────────────
-function makeNestedJsonHook(tool: string, events: Record<string, string>, timeoutFn: (ms: number) => number, { matchers = {}, extra, sessionId = false }: { matchers?: Record<string, string>; extra?: (s: HookSettings) => void; sessionId?: boolean } = {}) {
+function makeNestedJsonHook(tool: string, events: Record<string, string>, timeoutFn: (ms: number) => number, { matchers = {}, extra, sessionId = false, extraEntries = {} }: { matchers?: Record<string, string>; extra?: (s: HookSettings) => void; sessionId?: boolean; extraEntries?: Record<string, HookEntry[]> } = {}) {
   const buildEntry = (key: string, type: string): HookEntry => ({
     hooks: [{ type: "command", command: buildCurlCmd(type, tool, { sessionId }), timeout: timeoutFn(STOP_MS) }],
     ...(matchers[key] != null ? { matcher: matchers[key] } : {}),
@@ -143,7 +157,7 @@ function makeNestedJsonHook(tool: string, events: Record<string, string>, timeou
       const settings = readJsonFile(filePath);
       const hooks: Record<string, HookEntry[]> = { ...(settings.hooks || {}) };
       for (const [key, type] of Object.entries(events)) {
-        hooks[key] = [...(hooks[key] || []).filter((g) => !isOwn(g)), buildEntry(key, type)];
+        hooks[key] = [...(hooks[key] || []).filter((g) => !isOwn(g)), buildEntry(key, type), ...(extraEntries[key] || [])];
       }
       settings.hooks = hooks;
       if (extra) extra(settings);
@@ -165,7 +179,10 @@ function makeNestedJsonHook(tool: string, events: Record<string, string>, timeou
     },
     isEnabled(filePath: string) {
       const s = readJsonFile(filePath);
-      return Object.keys(events).every((k) => (s.hooks?.[k] || []).some(isCurrent));
+      // An extra entry missing (an older install) re-runs enable, which adds it.
+      const extrasIn = Object.entries(extraEntries).every(([k, list]) =>
+        list.every((e) => (s.hooks?.[k] || []).some((g) => JSON.stringify(g) === JSON.stringify(e))));
+      return extrasIn && Object.keys(events).every((k) => (s.hooks?.[k] || []).some(isCurrent));
     },
   };
 }
@@ -607,7 +624,7 @@ const TOOL_REGISTRY: Record<string, ToolHook> = {
     { UserPromptSubmit: "working", PreToolUse: "working", PostToolUse: "working",
       Stop: "done", PermissionRequest: "blocked", Notification: "blocked" },
     (ms) => ms,
-    { matchers: { Notification: "permission_prompt" }, extra: applyClaudeEnv, sessionId: true }),
+    { matchers: { Notification: "permission_prompt" }, extra: applyClaudeEnv, sessionId: true, extraEntries: { PreToolUse: [gateEntry("AskUserQuestion")], PermissionRequest: [gateEntry("")] } }),
   // Claude-style hooks in the CLI's own config; the session_id key matches agentCatalog.
   devin: makeNestedJsonHook("devin",
     { UserPromptSubmit: "working", PreToolUse: "working", PostToolUse: "working",

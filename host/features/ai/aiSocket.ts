@@ -28,6 +28,11 @@ function liveTerminalCwd(sessionId: string): string | null {
 }
 
 // The command a custom launcher runs in place of the bare engine binary; "" for built-ins.
+// A claude chat whose id is a live terminal drives the TUI in it rather than a headless CLI.
+function tuiTerminalFor(sessionId: string, engine: string): boolean {
+  return engine === AI_ENGINES.CLAUDE && !!liveTerminalCwd(sessionId);
+}
+
 function launcherFor(sessionId: string, engine: string): string {
   const custom = customAgentById(getSessionAgent(sessionId) || "");
   return custom?.base === engine ? custom.cmd : "";
@@ -372,6 +377,7 @@ export function setupAiHandlers(socket: any, io: any, manager: AiManager = globa
       // Model defaults resolve host-side; adapters never read the machine's config.
       const spawnOptions = {
         ...(resumeId ? { ...options, cliSessionId: resumeId } : options),
+        tuiTerminal: tuiTerminalFor(sessionId, engine),
         launcher: launcherFor(sessionId, engine),
         defaultModel: defaultModelFor(engine, launcherFor(sessionId, engine)),
         defaultEffort: defaultEffortFor(engine) || options.defaultEffort
@@ -412,6 +418,7 @@ export function setupAiHandlers(socket: any, io: any, manager: AiManager = globa
         if (!session) {
           // cwd rides along so the raced session lands in the right directory, not $HOME
           session = manager.createSession(sessionId, "claude", liveTerminalCwd(sessionId) || cwd || process.cwd(), {
+            tuiTerminal: tuiTerminalFor(sessionId, "claude"),
             launcher: launcherFor(sessionId, "claude"),
             defaultModel: defaultModelFor("claude", launcherFor(sessionId, "claude")),
             defaultEffort: defaultEffortFor("claude")
