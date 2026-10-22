@@ -290,7 +290,7 @@ function TerminalHeader({
   // the only indication that one is running.
   const mainHead = useFleetStore((s) => s.currentKey);
   const headerKey = hostKey || mainHead;
-  const headerHost = headerKey ? useFleetStore((s) => (s.hosts as Record<string, any>)[headerKey]) : null;
+  const headerHost = useFleetStore((s) => (headerKey ? (s.hosts as Record<string, any>)[headerKey] : null));
   const mobileDeviceCount = headerHost?.mobileDeviceCount || 0;
   // Per-host capability: a foreign host decides for itself whether it can do
   // remote desktop / mirroring / local sites. The active host keeps the values
