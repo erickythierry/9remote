@@ -36,7 +36,9 @@ function fakeCtx(sockets, db) {
     sockets,
     getWebSockets: () => sockets,
     acceptWebSocket: () => {},
-    setWebSocketAutoResponse: () => {}
+    setWebSocketAutoResponse: () => {},
+    // Runtime stamps this on every auto-answered "ping"; fake ws sets _pongAt.
+    getWebSocketAutoResponseTimestamp: (ws) => (ws._pongAt ? new Date(ws._pongAt) : null)
   };
 }
 
@@ -119,6 +121,77 @@ const MIN = 60_000;
   await do_.webSocketMessage(agent, JSON.stringify({ to: "agent", from: "a1", type: "hb" }));
   assert.ok(agent._att.aliveAt, "hb restamps aliveAt for old hosts");
   console.log("  ✓ old-host JSON hb still stamps aliveAt");
+}
+
+// 7. Post-hb host: no aliveAt, stale D1, but the runtime kept answering its
+//    10s pings — the free auto-response stamp vouches without a D1 read.
+{
+  const stale = new Date(Date.now() - 10 * MIN).toISOString().slice(0, 19).replace("T", " ");
+  const db = fakeDb(stale);
+  const agent = fakeWs("agent", "a1");
+  agent._pongAt = Date.now() - 30_000;
+  const do_ = new SignalingDO(fakeCtx([agent], db), { DB: db });
+  const readsBefore = db.queries.length;
+  assert.equal(await presence(do_, db), true, "fresh ping stamp vouches");
+  assert.equal(db.queries.length, readsBefore, "ping-stamp path must skip the D1 read");
+  console.log("  ✓ fresh auto-response stamp → present, no D1 read");
+}
+
+// 8. Reconnect storm: a role exceeding STORM_MAX_JOINS in the window is 429'd,
+//    and the other role is unaffected. Node's Response rejects status 101, so
+//    an admitted join surfaces as the throw, a refusal as a real 429.
+{
+  const joinStatus = async (do_, url) => {
+    try { return (await do_.fetch({ url })).status; } catch { return 101; }
+  };
+  const db = fakeDb(undefined);
+  const do_ = new SignalingDO(fakeCtx([], db), { DB: db });
+  for (let i = 0; i < 10; i++) {
+    assert.equal(await joinStatus(do_, "https://do/ws?role=client&from=c" + i), 101, "join " + (i + 1) + " within budget");
+  }
+  assert.equal(await joinStatus(do_, "https://do/ws?role=client&from=storm"), 429, "join past budget is refused");
+  assert.equal(await joinStatus(do_, "https://do/ws?role=agent&from=agent"), 101, "client storm must not 429 the agent role");
+  console.log("  ✓ storm breaker: 429 past budget, per-role");
+}
+
+// 9. Doc semantics (DurableObjectState::getWebSocketAutoResponseTimestamp):
+//    a stale stamp only means the ping path is dead — the durable D1 heartbeat
+//    still vouches. Liveness layering, not either/or.
+{
+  const fresh = new Date(Date.now() - 2 * MIN).toISOString().slice(0, 19).replace("T", " ");
+  const db = fakeDb(fresh);
+  const agent = fakeWs("agent", "a1");
+  agent._pongAt = Date.now() - 10 * MIN; // pings stopped, socket lingers
+  const do_ = new SignalingDO(fakeCtx([agent], db), { DB: db });
+  assert.equal(await presence(do_, db), true, "fresh agentSeenAt rescues a silent socket");
+  console.log("  ✓ stale ping stamp + fresh D1 → present");
+}
+
+// 10. Storm window rolls: doc says hibernation resets constructor state, but
+//     while awake the window must prune — a peer blocked at t0 may rejoin once
+//     STORM_WINDOW_MS has passed. Refusals must not extend the window.
+{
+  const joinStatus = async (do_, url) => {
+    try { return (await do_.fetch({ url })).status; } catch { return 101; }
+  };
+  const db = fakeDb(undefined);
+  const do_ = new SignalingDO(fakeCtx([], db), { DB: db });
+  const realNow = Date.now;
+  const t0 = realNow();
+  try {
+    Date.now = () => t0;
+    for (let i = 0; i < 10; i++) await joinStatus(do_, "https://do/ws?role=client&from=c" + i);
+    assert.equal(await joinStatus(do_, "https://do/ws?role=client&from=storm"), 429, "blocked inside the window");
+    // A refused attempt at t0+10s must not push into the window.
+    Date.now = () => t0 + 10_000;
+    assert.equal(await joinStatus(do_, "https://do/ws?role=client&from=storm2"), 429, "refusal does not extend the window");
+    // Past the window the oldest joins prune out — the role may join again.
+    Date.now = () => t0 + 31_000;
+    assert.equal(await joinStatus(do_, "https://do/ws?role=client&from=fresh"), 101, "window rolled — rejoin admitted");
+  } finally {
+    Date.now = realNow;
+  }
+  console.log("  ✓ storm window prunes and refusals do not extend it");
 }
 
 console.log("signalingDoPresence: all green");
