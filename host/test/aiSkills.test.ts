@@ -91,6 +91,44 @@ test("an engine nobody has taught gets no library, not another's", () => {
   assert.deepEqual(listSkills("not-an-engine", null), []);
 });
 
+// listSkills caches per engine for 10s; a test that changes the disk jumps the clock past it.
+const realNow = Date.now;
+let skew = 0;
+const pastCache = () => { skew += 60_000; Date.now = () => realNow() + skew; };
+
+test("an enabled plugin's skills list as <plugin>:<name>, a disabled one's do not", () => {
+  const on = path.join(sandbox, ".claude/plugins/cache/mk/on");
+  const off = path.join(sandbox, ".claude/plugins/cache/mk/off");
+  for (const [dir, name] of [[on, "alpha"], [off, "beta"]]) {
+    fs.mkdirSync(path.join(dir, "skills", name), { recursive: true });
+    fs.writeFileSync(path.join(dir, "skills", name, "SKILL.md"), `---\nname: ${name}\ndescription: >\n  folded\n  text\ndisable-model-invocation: true\n---\n`);
+    // Build files beside the skills are not skills.
+    fs.mkdirSync(path.join(dir, "skills", "generated"), { recursive: true });
+  }
+  fs.writeFileSync(path.join(sandbox, ".claude/settings.json"), JSON.stringify({ enabledPlugins: { "on@mk": true, "off@mk": false } }));
+  fs.writeFileSync(path.join(sandbox, ".claude/plugins/installed_plugins.json"), JSON.stringify({
+    plugins: { "on@mk": [{ installPath: on }], "off@mk": [{ installPath: off }] }
+  }));
+  fs.rmSync(path.join(sandbox, ".claude/skills copy"), { recursive: true, force: true });
+  pastCache();
+  const found = listSkills("claude", null).filter((x: { source: string; }) => x.source === "plugin");
+  assert.deepEqual(found.map((x: { name: string; }) => x.name), ["on:alpha"]);
+  assert.equal(found[0].plugin, "on");
+  assert.equal(found[0].userOnly, true);
+  assert.equal(found[0].description, "folded text");
+  // Another engine never gets claude's plugins.
+  assert.ok(!listSkills("codex", null).some((x: { source: string; }) => x.source === "plugin"));
+});
+
+test("a symlinked skill directory is a skill", () => {
+  const target = path.join(sandbox, "elsewhere", "linked");
+  fs.mkdirSync(target, { recursive: true });
+  fs.writeFileSync(path.join(target, "SKILL.md"), "---\nname: linked\ndescription: via symlink\n---\n");
+  fs.symlinkSync(target, path.join(sandbox, ".claude/skills", "linked"));
+  pastCache();
+  assert.ok(listSkills("claude", null).some((x: { name: string; }) => x.name === "linked"));
+});
+
 // The reason this file is written the way it is, asserted rather than trusted.
 test("the real skill libraries were never written to", () => {
   for (const before of realDirs) {

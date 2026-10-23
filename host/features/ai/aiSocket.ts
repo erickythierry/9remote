@@ -3,6 +3,7 @@ import { globalAiManager, destroyDetachedChat, type AiManager } from "./aiManage
 import { broadcast } from "../../transport/broadcast.js";
 import { createLogger } from "../../lib/logger.js";
 import { listSkills } from "./skills.js";
+import { listPlugins } from "./plugins.js";
 import { listMcpServers } from "./mcp.js";
 import { searchRepoFiles } from "./files.js";
 import { listModelOptionsFor, listOpencodeModelOptions, listOpencodeModelOptionsFromServer, listAllOpencodeModelOptions, resolveDefaultModel, resolveDefaultEffort } from "./models.js";
@@ -261,6 +262,7 @@ function defaultEffortFor(engine: string) {
 async function emitConnectMetadata(session: AiSession, engine: string) {
   const skills = listSkills(engine, session.cwd);
   const mcpServers = listMcpServers(engine, session.cwd);
+  const plugins = listPlugins(engine);
   // Live '/' menu feed the adapter already fetched (opencode, omp).
   const commands = session.adapter?.metadata?.commands;
   const launcher = launcherFor(session.id, engine);
@@ -271,13 +273,14 @@ async function emitConnectMetadata(session: AiSession, engine: string) {
   session.emitNormalized("init", {
     skills,
     mcpServers,
+    plugins,
     ...(commands?.length ? { commands } : {}),
     modelOptions,
     model: session.model || defaultModelFor(engine, launcher),
     // The session's pick wins; else the CLI's config is what the composer must show.
     effort: session.effort || defaultEffortFor(engine)
   }, !session.hasRecordedInit());
-  return { skills, mcpServers, modelOptions };
+  return { skills, mcpServers, plugins, modelOptions };
 }
 
 // init is the only place a chat session's conversation id surfaces; persist the terminal's agent, not the engine's.

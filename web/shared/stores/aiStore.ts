@@ -35,7 +35,7 @@ export type AiSessionState = {
   permissionMode: string | null;
   stats: AiStats;
   turnBaseline: Baseline;
-  metadata: { model?: string; effort?: string; skills?: unknown[]; mcpServers?: unknown[]; [key: string]: unknown };
+  metadata: { model?: string; effort?: string; skills?: unknown[]; mcpServers?: unknown[]; plugins?: unknown[]; [key: string]: unknown };
   tasks: TaskRecord[];
   harnessTasks: HarnessTaskRow[];
   queue: unknown[];
@@ -125,7 +125,7 @@ const INITIAL_SESSION_STATE: AiSessionState = {
   stats: { inputTokens: 0, outputTokens: 0, totalTurns: 0, totalCost: 0, reasoningTokens: 0 },
   // stats snapshot at turn start; the turn's own usage is the difference.
   turnBaseline: { inputTokens: 0, outputTokens: 0 },
-  metadata: { model: "", skills: [], mcpServers: [] },
+  metadata: { model: "", skills: [], mcpServers: [], plugins: [] },
   tasks: [], // TaskCreate/TaskUpdate checklist
   // Harness task state straight off the CLI's records — lib/harnessTasks.js owns the shape.
   harnessTasks: [],

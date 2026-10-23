@@ -12,6 +12,7 @@ import { Composer } from "./Composer";
 import { AiStatusBar } from "./AiStatusBar";
 import { SkillsModal } from "./modals/SkillsModal";
 import { McpModal } from "./modals/McpModal";
+import { PluginsModal } from "./modals/PluginsModal";
 import { ModelModal } from "./modals/ModelModal";
 import { SessionsModal } from "./modals/SessionsModal";
 import { ConfigModal } from "./modals/ConfigModal";
@@ -50,7 +51,7 @@ import {
 } from "@/features/terminal/constants/terminalConfig";
 import { resolveTerminalTheme } from "@/shared/theme/themeConfig";
 
-const DEFAULT_METADATA = { model: "", skills: [], mcpServers: [] };
+const DEFAULT_METADATA = { model: "", skills: [], mcpServers: [], plugins: [] };
 const EMPTY_TASKS: any[] = [];
 
 export interface AiPaneViewProps {
@@ -88,7 +89,7 @@ export const AiPaneView = memo(function AiPaneView({
   onOpenArtifact = null,
   onNewChat = null
 }: AiPaneViewProps) {
-  const [activeModal, setActiveModal] = useState<string | null>(null); // 'skills' | 'mcp' | 'model'
+  const [activeModal, setActiveModal] = useState<string | null>(null); // 'skills' | 'mcp' | 'plugins' | 'model'
   const [refreshing, setRefreshing] = useState(false);
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const { t } = useI18n();
@@ -170,6 +171,7 @@ export const AiPaneView = memo(function AiPaneView({
 
   const skills = metadata.skills || [];
   const mcpServers = metadata.mcpServers || [];
+  const plugins = metadata.plugins || [];
 
   const handleSelectSkill = useCallback((skillName: string) => {
     sendPrompt(`/${skillName}`);
@@ -471,6 +473,13 @@ export const AiPaneView = memo(function AiPaneView({
       {activeModal === "mcp" && (
         <McpModal
           mcpServers={mcpServers as any}
+          onClose={() => setActiveModal(null)}
+        />
+      )}
+
+      {activeModal === "plugins" && (
+        <PluginsModal
+          plugins={plugins as any}
           onClose={() => setActiveModal(null)}
         />
       )}

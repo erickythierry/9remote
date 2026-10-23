@@ -25,6 +25,12 @@ const normalizeSkills = (skills: any): any[] =>
   Array.isArray(skills)
     ? skills.map((s) => (typeof s === "string" ? { id: s, name: s, description: "" } : s))
     : [];
+// The host scan wins per id; skills only the CLI announced (built-ins, not on disk) stay.
+const mergeSkills = (current: any, scanned: any): any[] => {
+  const fresh = normalizeSkills(scanned);
+  const ids = new Set(fresh.map((s) => s.id || s.name));
+  return [...fresh, ...normalizeSkills(current).filter((s) => !ids.has(s.id || s.name))];
+};
 const HYDRATE_TIMEOUT_MS = 4000;
 // Ack-wait budget; a carrier that dies mid-flight never calls back.
 const HISTORY_TIMEOUT_MS = 4000;
@@ -69,7 +75,7 @@ export function reduceSessionEvents(events: any[] = [], engine = "claude", idBas
   let tasks: any[] = [];
   // Folded at the end via lib/harnessTasks so replay and the live store share one reader.
   const harnessRecords: any[] = [];
-  let metadata: Record<string, any> = { model: "", skills: [], mcpServers: [] };
+  let metadata: Record<string, any> = { model: "", skills: [], mcpServers: [], plugins: [] };
   let stats: any = { inputTokens: 0, outputTokens: 0, totalTurns: 0, totalCost: 0, reasoningTokens: 0 };
   let isTurnRunning = false;
   let activePermission: any = null;
@@ -805,10 +811,13 @@ export function useAiSession({
         if (Array.isArray(res?.modelOptions) && res.modelOptions.length > 0) {
           useAiStore.getState().setMetadata(sessionId, { modelOptions: res.modelOptions });
         }
-        // The recorded init keeps the MCP list from creation; the ack has the current one.
-        if (Array.isArray(res?.mcpServers)) {
-          useAiStore.getState().setMetadata(sessionId, { mcpServers: res.mcpServers });
-        }
+        // The recorded init keeps these lists from creation; the ack has the current ones.
+        const liveLists = {
+          ...(Array.isArray(res?.mcpServers) ? { mcpServers: res.mcpServers } : {}),
+          ...(Array.isArray(res?.plugins) ? { plugins: res.plugins } : {}),
+          ...(Array.isArray(res?.skills) ? { skills: mergeSkills(useAiStore.getState().bySession[sessionId]?.metadata?.skills, res.skills) } : {})
+        };
+        useAiStore.getState().setMetadata(sessionId, liveLists);
         if (events.length > 0) {
           // Pure in-memory reduction in <3ms instead of 5000+ synchronous store dispatches
           const hydrated = reduceSessionEvents(events, engine);
@@ -823,7 +832,7 @@ export function useAiSession({
               ...useAiStore.getState().bySession[sessionId]?.metadata,
               ...hydrated.metadata,
               ...(Array.isArray(res?.modelOptions) ? { modelOptions: res.modelOptions } : {}),
-              ...(Array.isArray(res?.mcpServers) ? { mcpServers: res.mcpServers } : {}),
+              ...liveLists,
               ...(res.session.effort ? { effort: res.session.effort } : {})
             },
             // The host's counters outrank the replay's: the log holds events, not the

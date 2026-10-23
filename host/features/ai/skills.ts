@@ -1,12 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { installedPlugins } from "./plugins.js";
 
 export interface SkillItem {
   id: string;
   name: string;
   description: string;
   path: string;
+  source: "user" | "project" | "plugin";
+  plugin?: string;
+  userOnly?: boolean;
 }
 
 interface CachedSkills {
@@ -17,40 +21,55 @@ interface CachedSkills {
 let cachedSkills: CachedSkills = { claude: null, codex: null, at: 0 };
 const CACHE_TTL_MS = 10000;
 
-function parseSkillMd(mdPath: string, fallbackName: string): { name: string; description: string } {
+function parseSkillMd(mdPath: string, fallbackName: string): { name: string; description: string; userOnly: boolean } {
   try {
     const content = fs.readFileSync(mdPath, "utf8");
     const match = content.match(/^---\s*([\s\S]*?)\s*---/);
     let name = fallbackName;
     let description = `Skill: ${fallbackName}`;
+    let userOnly = false;
     if (match) {
       const yaml = match[1];
       const nameMatch = yaml.match(/^name:\s*(.+)$/m);
-      const descMatch = yaml.match(/^description:\s*([\s\S]*?)(?=\n[a-z_]+:|$)/m);
+      // The value runs to the next top-level key (hyphens allowed) or the end; a `>`/`|` block marker is not text.
+      const descMatch = yaml.match(/^description:\s*([\s\S]*?)(?=\n[A-Za-z_-]+:|(?![\s\S]))/m);
       if (nameMatch) name = nameMatch[1].trim();
-      if (descMatch) description = descMatch[1].trim().replace(/\n+/g, " ");
+      if (descMatch) description = descMatch[1].replace(/^[>|][-+]?/, "").trim().replace(/\s+/g, " ");
+      userOnly = /^disable-model-invocation:\s*true\s*$/m.test(yaml);
     }
-    return { name, description };
+    return { name, description, userOnly };
   } catch {
-    return { name: fallbackName, description: `Skill: ${fallbackName}` };
+    return { name: fallbackName, description: `Skill: ${fallbackName}`, userOnly: false };
   }
 }
 
-function scanSkillDir(baseDir: string): SkillItem[] {
+// A skill may be a symlink to a directory (omarchy ships its skills that way), which Dirent.isDirectory() reports as false.
+const isDir = (p: string) => {
+  try { return fs.statSync(p).isDirectory(); } catch { return false; }
+};
+
+// requireMd: a plugin's skills/ also holds build files and folders that are not skills.
+function scanSkillDir(baseDir: string, source: SkillItem["source"], plugin?: string, requireMd = false): SkillItem[] {
   if (!fs.existsSync(baseDir)) return [];
   const results: SkillItem[] = [];
   try {
     const entries = fs.readdirSync(baseDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
       const skillPath = path.join(baseDir, entry.name);
+      if (entry.name.startsWith(".") || !isDir(skillPath)) continue;
       const mdPath = path.join(skillPath, "SKILL.md");
-      const { name, description } = parseSkillMd(mdPath, entry.name);
+      if (requireMd && !fs.existsSync(mdPath)) continue;
+      const { name, description, userOnly } = parseSkillMd(mdPath, entry.name);
+      // The CLI names a plugin's skill `<plugin>:<name>`, and that is what a prompt must type.
+      const qualified = plugin ? `${plugin}:${name}` : name;
       results.push({
-        id: entry.name,
-        name,
+        id: plugin ? `${plugin}:${entry.name}` : entry.name,
+        name: qualified,
         description,
-        path: skillPath
+        path: skillPath,
+        source,
+        ...(plugin ? { plugin } : {}),
+        ...(userOnly ? { userOnly } : {})
       });
     }
   } catch {}
@@ -72,8 +91,17 @@ export function listSkills(engine: string = "claude", workspacePath: string | nu
 
   const map = new Map<string, SkillItem>();
   for (const dir of dirs) {
-    for (const s of scanSkillDir(dir)) {
+    const source = workspacePath && dir.startsWith(workspacePath + path.sep) ? "project" : "user";
+    for (const s of scanSkillDir(dir, source)) {
       if (!map.has(s.id)) map.set(s.id, s);
+    }
+  }
+  // Only claude has plugins this host can read.
+  if (engine === "claude") {
+    for (const plugin of installedPlugins(home).filter((p) => p.enabled)) {
+      for (const s of scanSkillDir(path.join(plugin.installPath, "skills"), "plugin", plugin.name, true)) {
+        if (!map.has(s.id)) map.set(s.id, s);
+      }
     }
   }
 

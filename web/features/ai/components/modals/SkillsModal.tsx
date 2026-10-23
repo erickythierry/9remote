@@ -9,6 +9,9 @@ export interface SkillItem {
   id?: string;
   name?: string;
   description?: string;
+  source?: "user" | "project" | "plugin";
+  plugin?: string;
+  userOnly?: boolean;
   [key: string]: any;
 }
 
@@ -41,7 +44,7 @@ export const SkillsModal = memo(function SkillsModal({
     <ModalShell
       icon={<Zap size={14} />}
       title={`Agent Skills (${skills.length})`}
-      subtitle="Skills loaded from ~/.claude/skills and project directory"
+      subtitle="Skills from your library, the project and enabled plugins"
       onClose={onClose}
     >
       {/* Search */}
@@ -79,8 +82,13 @@ export const SkillsModal = memo(function SkillsModal({
                 <div className="flex items-center gap-1.5 font-mono text-xs font-semibold text-text">
                   <span>/{s.name || s.id}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-3 text-text-muted font-normal">
-                    skill
+                    {s.source === "plugin" ? `plugin · ${s.plugin}` : s.source === "project" ? "project" : "skill"}
                   </span>
+                  {s.userOnly && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-3 text-text-muted font-normal">
+                      user-only
+                    </span>
+                  )}
                 </div>
                 {s.description && (
                   <p className="text-[11px] text-text-muted leading-relaxed line-clamp-2">

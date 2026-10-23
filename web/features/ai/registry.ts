@@ -134,6 +134,7 @@ const DEFAULT_SLASH_COMMANDS = Object.freeze([
   { name: "/model", description: "Select or change active AI model", action: "modal:model" },
   { name: "/mcp", description: "List and manage MCP servers", action: "modal:mcp" },
   { name: "/skills", description: "List available agent skills", action: "modal:skills" },
+  { name: "/plugin", description: "List installed plugins", action: "modal:plugins" },
   { name: "/tasks", description: "View background tasks and checklist", action: "modal:tasks" },
   { name: "/resume", description: "Resume a previous conversation in this project", action: "modal:sessions" },
   { name: "/rewind", description: "Go back to an earlier prompt in this conversation", action: "modal:rewind" },
