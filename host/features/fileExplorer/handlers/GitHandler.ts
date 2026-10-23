@@ -2,7 +2,7 @@ import type { ExplorerSocket } from "../fileExplorerSocket.js";
 import fs from "fs";
 import path from "path";
 import { spawn, spawnSync, execSync, type SpawnOptions } from "child_process";
-import { BINARY_EXTENSIONS, MAX_FILE_SIZE, DEFAULT_GIT_LOG_LIMIT, MAX_GIT_OUTPUT_SIZE, MAX_GIT_DIFF_SIZE, MIME_BY_EXT, MAX_IMAGE_RAW_SIZE } from "../constants.js";
+import { BINARY_EXTENSIONS, MAX_FILE_SIZE, DEFAULT_GIT_LOG_LIMIT, GIT_STAT_FAIL_TTL_MS, MAX_GIT_OUTPUT_SIZE, MAX_GIT_DIFF_SIZE, MIME_BY_EXT, MAX_IMAGE_RAW_SIZE } from "../constants.js";
 import { isSensitivePath } from "../pathGuard.js";
 import { scaleImageBuffer } from "./FileHandler.js";
 import {
@@ -24,6 +24,14 @@ const errMsg = (e: unknown): string => (e as { message: string }).message;
 const GIT_COUNT_TTL_MS = 5000;
 type CountEntry = { ts: number; value: { success: boolean; count?: number; ahead?: number; behind?: number; error?: string }; pending: Promise<CountResult> | null };
 const _countCache = new Map<string, CountEntry>(); // repoPath → { ts, value, pending }
+
+// A numstat that crashes git (corrupt pack) fails the same way every time, so the failure is
+// remembered per gitRoot and retried only after the TTL or when .git/index changes.
+const _statFailures = new Map<string, { ts: number; indexMtime: number; warning: string }>();
+
+const indexMtime = (gitRoot: string): number => {
+  try { return fs.statSync(path.join(gitRoot, ".git", "index")).mtimeMs; } catch { return 0; }
+};
 
 const GIT_FETCH_TTL_MS = 60000;
 const GIT_FETCH_TIMEOUT_MS = 20000;
@@ -222,20 +230,34 @@ export function setupGitHandlers(socket: ExplorerSocket) {
 
       // Get diff stats for tracked files
       const diffStats: Record<string, { added: number; deleted: number }> = {};
-      try {
-        const statResult = execSync("git diff HEAD --numstat --no-renames", {
-          cwd: gitRoot, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true
-        });
-        statResult.trim().split("\n").filter(Boolean).forEach(line => {
-          const parts = line.split("\t");
-          if (parts.length >= 3) {
-            diffStats[parts[2]] = {
-              added: parts[0] === "-" ? 0 : parseInt(parts[0], 10) || 0,
-              deleted: parts[1] === "-" ? 0 : parseInt(parts[1], 10) || 0
-            };
-          }
-        });
-      } catch {}
+      let warning: string | undefined;
+      const failure = _statFailures.get(gitRoot);
+      const mtime = indexMtime(gitRoot);
+      if (failure && Date.now() - failure.ts < GIT_STAT_FAIL_TTL_MS && failure.indexMtime === mtime) {
+        warning = failure.warning;
+      } else {
+        try {
+          const statResult = execSync("git diff HEAD --numstat --no-renames", {
+            cwd: gitRoot, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true
+          });
+          _statFailures.delete(gitRoot);
+          statResult.trim().split("\n").filter(Boolean).forEach(line => {
+            const parts = line.split("\t");
+            if (parts.length >= 3) {
+              diffStats[parts[2]] = {
+                added: parts[0] === "-" ? 0 : parseInt(parts[0], 10) || 0,
+                deleted: parts[1] === "-" ? 0 : parseInt(parts[1], 10) || 0
+              };
+            }
+          });
+        } catch (e) {
+          const err = e as { signal?: string; status?: number; stderr?: Buffer | string };
+          const detail = String(err.stderr ?? "").trim().split("\n")[0] || errMsg(e);
+          warning = `git diff failed (${err.signal ?? `exit ${err.status}`}): ${detail}. The repository may be corrupted.`;
+          console.warn(`[git] ${gitRoot}: ${warning}`);
+          _statFailures.set(gitRoot, { ts: Date.now(), indexMtime: mtime, warning });
+        }
+      }
 
       const files = [];
       for (const line of result.trim().split("\n").filter(Boolean)) {
@@ -271,7 +293,7 @@ export function setupGitHandlers(socket: ExplorerSocket) {
         files.push({ status, path: filePath, file: filePath, added: stats.added, deleted: stats.deleted });
       }
 
-      callback({ success: true, files, gitRoot });
+      callback({ success: true, files, gitRoot, warning });
     } catch {
       callback({ success: false, error: "Not a git repository or git not available" });
     }

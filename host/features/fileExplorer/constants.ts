@@ -26,6 +26,8 @@ export const MAX_PREVIEW_SESSIONS = 16;
 export const PREVIEW_NAV_SOURCE = "9remote-preview";
 export const DEFAULT_TREE_DEPTH = 3;
 export const DEFAULT_GIT_LOG_LIMIT = 20;
+// How long a crashed `git diff --numstat` is not retried for the same repo.
+export const GIT_STAT_FAIL_TTL_MS = 5 * 60 * 1000;
 // spawnSync defaults to a 1MB stdout buffer — a whole-repo `git diff` blows past that and
 // comes back truncated (or empty), which reads as "no changes" in the UI.
 export const MAX_GIT_OUTPUT_SIZE = 64 * 1024 * 1024;
