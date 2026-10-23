@@ -131,7 +131,7 @@ export const TERMINAL_OPTIONS = {
   fontSizeMobile: 12,
   fontFamily: 'ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", "Noto Sans Mono", Menlo, Monaco, "Courier New", monospace',
   scrollback: 15000,
-  convertEol: true,
+  convertEol: false,
   allowProposedApi: true,
   scrollOnUserInput: true,
   fastScrollModifier: "none" as const,
