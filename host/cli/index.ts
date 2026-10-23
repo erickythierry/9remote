@@ -8,7 +8,7 @@ import { stopRunningInstances } from "./utils/updateChecker.js";
 import { startUiMode } from "./modes/ui.js";
 import { startTrayMode } from "./modes/tray.js";
 import { autoStartDev } from "./modes/auto.js";
-import { startupMenu } from "./modes/startup.js";
+import { launchBackground } from "./modes/background.js";
 import { tuiMode } from "./modes/tui.js";
 import { runHeadlessCommand, printHelp } from "./modes/headless.js";
 
@@ -51,7 +51,7 @@ async function start() {
     // No interactive terminal (SSH/server): TUI menu would break, show help instead
     printHelp();
   } else {
-    await startupMenu();
+    await launchBackground();
   }
 }
 
