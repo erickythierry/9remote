@@ -5,7 +5,7 @@ import {
   X, ChevronLeft, Settings, Palette, Terminal, Bell, Sparkles, Globe,
   Download, RefreshCw, LogOut, Loader2, Monitor, Type,
   Sun, Moon, Keyboard, PanelRight, ChevronRight, Zap, Image, Bot,
-  Power, Lock, PowerOff, Mic, Bug, Copy, Trash2, Link2
+  Power, Lock, PowerOff, Mic, Bug, Copy, Trash2, Link2, RotateCw
 } from "@/shared/components/ui/Icon";
 import { vibrate } from "@/shared/utils/vibration";
 import { useI18n } from "@/shared/i18n";
@@ -33,6 +33,7 @@ import { useHostLocalSettings } from "@/features/terminal/hooks/useAgentLocalSet
 import { useVoiceStore } from "@/shared/stores/voiceStore";
 import { useLogStore } from "@/shared/stores/logStore";
 import ConfirmDialog from "@/shared/components/ui/ConfirmDialog";
+import { useFleetStore } from "@/shared/stores/fleetStore";
 
 const ICONS = { Settings, Palette, Terminal, Bell, Sparkles, Keyboard, Zap, PanelRight, Image, Bot, Monitor, Mic, Bug, Globe, Link2 };
 
@@ -66,6 +67,9 @@ export default function SettingsDialog({
   const [section, setSection] = useState(hostEnv ? "system" : "general");
   const [reloading, setReloading] = useState(false);
   const [confirmShutdown, setConfirmShutdown] = useState(false);
+  const [confirmRestart, setConfirmRestart] = useState(false);
+  const restartHead = useFleetStore((s) => s.currentKey);
+  const restarting = useFleetStore((s) => !!(s.currentKey && s.hosts[s.currentKey]?.updating));
   const hostLocal = useHostLocalSettings();
   const voiceEnabled = useVoiceStore((s) => s.enabled);
   const browserUseEnabled = useBrowserUseStore((s) => s.enabled);
@@ -114,7 +118,7 @@ export default function SettingsDialog({
     // single Escape would reach both and close the dialog underneath it. The
     // innermost layer wins: skip while a child modal is up.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !languageOpen && !confirmShutdown) {
+      if (e.key === "Escape" && !languageOpen && !confirmShutdown && !confirmRestart) {
         e.preventDefault();
         e.stopPropagation();
         onClose();
@@ -126,7 +130,7 @@ export default function SettingsDialog({
       window.removeEventListener("keydown", onKey, true);
       document.body.style.overflow = "";
     };
-  }, [onClose, languageOpen, confirmShutdown]);
+  }, [onClose, languageOpen, confirmShutdown, confirmRestart]);
 
   // One list, three pages: each toggle declares its page (`section`) and, optionally,
   // a hint line — same shape as the artifact row.
@@ -425,6 +429,13 @@ export default function SettingsDialog({
 
                 <Group title={t("menu.agentPower")}>
                   <ActionRow
+                    icon={RotateCw}
+                    iconClass={restarting ? "animate-spin" : ""}
+                    label={restarting ? t("menu.restartStarting") : t("menu.agentRestart")}
+                    disabled={!restartHead || restarting}
+                    onClick={() => setConfirmRestart(true)}
+                  />
+                  <ActionRow
                     icon={PowerOff}
                     label={t("menu.agentShutdown")}
                     danger
@@ -485,6 +496,13 @@ export default function SettingsDialog({
         onConfirm={() => { setConfirmShutdown(false); run(hostLocal.shutdownHost); }}
         title={t("menu.agentShutdownConfirmTitle")}
         message={t("menu.agentShutdownConfirmMsg")}
+      />
+      <ConfirmDialog
+        isOpen={confirmRestart}
+        onClose={() => setConfirmRestart(false)}
+        onConfirm={() => { setConfirmRestart(false); vibrate(); if (restartHead) useFleetStore.getState().requestHostUpdate(restartHead, "restart"); }}
+        title={t("menu.restartConfirmTitle")}
+        message={t("menu.restartConfirmMessage")}
       />
     </div>
   );
