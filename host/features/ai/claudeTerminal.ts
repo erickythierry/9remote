@@ -3,6 +3,7 @@
 // switching between chat and terminal never stops the CLI or forks the conversation.
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import * as daemonClient from "../terminal/ptyDaemonClient.js";
@@ -13,7 +14,7 @@ import { CLEAR_LINE } from "../terminal/sessionMode.js";
 import { UPLOAD_DIR } from "../terminal/constants.js";
 import { findTranscript, CLAUDE_SESSION_ID_RE, claudeRecordParser, replayClaudeLines, liveTranscript } from "./claudeTranscript.js";
 import { stageAttachment, buildAttachedPrompt, type AttachmentInput } from "./aiAttachment.js";
-import { AI_ENGINES, CLAUDE_QUEUE_CONFIRM_MS, CLAUDE_TERMINAL_POLL_MS, CLAUDE_TERMINAL_BOOT_MS, CLAUDE_TERMINAL_SETTLE_MS, CLAUDE_TERMINAL_ENTER_MS, CLAUDE_SHELL_TAIL_BYTES, CLAUDE_SHELL_TAIL_LINES } from "./constants.js";
+import { AI_ENGINES, CLAUDE_QUEUE_CONFIRM_MS, CLAUDE_TERMINAL_POLL_MS, CLAUDE_TERMINAL_BOOT_MS, CLAUDE_TERMINAL_SETTLE_MS, CLAUDE_TERMINAL_ENTER_MS, CLAUDE_QUESTION_WAIT_MS, CLAUDE_SHELL_TAIL_BYTES, CLAUDE_SHELL_TAIL_LINES } from "./constants.js";
 import { createLogger } from "../../lib/logger.js";
 import type { AiSession, PromptQueueItem } from "./aiSession.js";
 
@@ -29,6 +30,19 @@ const MODE_RE = /^[A-Za-z]+$/;
 // Model and effort are typed as slash-command arguments and as launch flags: a bare id only.
 const OPTION_RE = /^[\w.:@/[\]-]+$/;
 const READ_CHUNK = 1 << 20;
+const ARROW_DOWN = "\x1b[B";
+
+// Claude Code's folder trust, as its config records it; a trusted ancestor covers the folder too.
+function isTrustedFolder(cwd: string): boolean {
+  const configDir = process.env.CLAUDE_CONFIG_DIR;
+  const file = configDir ? path.join(configDir, ".claude.json") : path.join(os.homedir(), ".claude.json");
+  let projects: Record<string, { hasTrustDialogAccepted?: boolean }>;
+  try { projects = JSON.parse(fs.readFileSync(file, "utf8")).projects || {}; } catch { return false; }
+  for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
+    if (projects[dir]?.hasTrustDialogAccepted) return true;
+    if (dir === path.dirname(dir)) return false;
+  }
+}
 // A sub-agent's steps nest under its Task row; its prose and prompts stay out of the main log.
 const CHILD_EVENTS = new Set(["tool_start", "tool_result"]);
 
@@ -179,7 +193,23 @@ export class ClaudeTerminal {
     daemonClient.sendInput(s.id, `${CLEAR_LINE}${this.launchLine(fresh)}\r`);
     logger.info(`session ${s.id}: TUI ${fresh ? "start" : "resume"} ${s.cliSessionId}`);
     if (!await this.settle(() => this.tuiRunning())) throw new Error("Claude Code did not start in this terminal");
+    if (!isTrustedFolder(s.cwd)) await this.confirmTrust();
     // The process is up before its input box is drawn; keys typed earlier are lost.
+    await this.settle(async () => true);
+  }
+
+  // The TUI's trust dialog blocks its input box; the chat answers it as a permission card.
+  async confirmTrust() {
+    const s = this.session;
+    await this.settle(async () => true);
+    const answer = await this.ask(`${PERMISSION_GATE_PREFIX}trust-${randomUUID()}`, "Trust folder", { cwd: s.cwd }, CLAUDE_QUESTION_WAIT_MS);
+    // Timed out or dismissed: the dialog stays in the terminal for the user.
+    if (!answer) throw new Error("Claude Code is waiting for folder trust in the terminal");
+    // The dialog opens on "No, exit"; one step down is "Yes, I trust this folder".
+    if (answer.behavior === "allow") daemonClient.sendInput(s.id, ARROW_DOWN);
+    await sleep(CLAUDE_TERMINAL_ENTER_MS);
+    daemonClient.sendInput(s.id, "\r");
+    if (answer.behavior !== "allow") throw new Error("Folder not trusted");
     await this.settle(async () => true);
   }
 
