@@ -39,6 +39,7 @@ function slimAttachmentRecord(record: any): { attachment: Record<string, any> } 
 }
 
 const LAUNCH_TASK_TOOLS = new Set(["Agent", "Task", "Bash", "Monitor"]);
+const STOP_TASK_TOOLS = new Set(["TaskStop", "KillShell"]);
 
 // hookInfos[].command is each hook's whole command line and can hold a token; the pane needs only counts and times.
 function slimSystemRecord(record: any): any {
@@ -142,6 +143,8 @@ type ClaudeEvent = { event: string; data: any };
 export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
   // Tool calls awaiting their result, by tool_use id — see DIFF_TOOL_SET.
   const toolCalls = new Map<string, { name: string; input: any }>();
+  // Launcher tool_use id by task handle: TaskStop names only the handle, and the row to close is the launcher's.
+  const launcherOf = new Map<string, string>();
   // A notification ends the tool row it names — on this door the settle is the row's only end (no watchdog in a replay).
   const pushTaskNotification = (task: any) => {
     push(task);
@@ -187,7 +190,19 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
             // `running`, not `done` — the work outlives the call, and the handle lets a later record settle it.
             ...(async ? { status: "running", async: true, handle: async.id } : null)
           }));
+        // A stopped task leaves no <task-notification> in the TUI transcript, only this result; without it a restart replays the task as running forever.
+        if (call && !isError && STOP_TASK_TOOLS.has(call.name)) {
+          const taskId = String(call.input?.task_id || call.input?.shell_id || "");
+          if (taskId) pushTaskNotification({
+            event: "cli_event",
+            data: {
+              type: "system", subtype: "task_notification",
+              record: { type: "system", subtype: "task_notification", task_id: taskId, status: "killed", ...(launcherOf.has(taskId) ? { tool_use_id: launcherOf.get(taskId) } : null) }
+            }
+          });
+        }
         // The TUI never writes task_started (only the stream-json CLI does); without it the strip and modal have no name or tool_use_id for the task.
+        if (async) launcherOf.set(async.id, tr.tool_use_id);
         if (async && call && LAUNCH_TASK_TOOLS.has(call.name)) {
           const agent = call.name === "Agent" || call.name === "Task";
           const input = call.input || {};

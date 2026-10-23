@@ -64,3 +64,26 @@ test("the TUI's queue is mirrored: enqueue, dequeue, remove and popAll", () => {
   op("popAll");
   assert.equal(term.queued.length, 0);
 });
+
+test("a TaskStop result closes the background task and its launcher row", () => {
+  const evs = collect([
+    { type: "assistant", message: { content: [{ type: "tool_use", id: "tu1", name: "Bash", input: { command: "sleep 999" } }] } },
+    { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu1", content: "Command did not complete within its 120s timeout and was moved to the background (ID: b1x)." }] } },
+    { type: "assistant", message: { content: [{ type: "tool_use", id: "tu2", name: "TaskStop", input: { task_id: "b1x" } }] } },
+    { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu2", content: "{\"message\":\"Successfully stopped task: b1x\"}" }] } }
+  ]);
+  const ended = evs.find((e) => e.data?.subtype === "task_notification");
+  assert.equal(ended.data.record.task_id, "b1x");
+  assert.equal(ended.data.record.status, "killed");
+  assert.equal(ended.data.record.tool_use_id, "tu1");
+  const settled = evs.filter((e) => e.event === "tool_result" && e.data.id === "tu1").pop();
+  assert.equal(settled.data.status, "done");
+});
+
+test("a failed TaskStop leaves the task running", () => {
+  const evs = collect([
+    { type: "assistant", message: { content: [{ type: "tool_use", id: "tu2", name: "TaskStop", input: { task_id: "b1x" } }] } },
+    { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu2", is_error: true, content: "No such task" }] } }
+  ]);
+  assert.ok(!evs.some((e) => e.data?.subtype === "task_notification"));
+});
