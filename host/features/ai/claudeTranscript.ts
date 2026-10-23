@@ -5,6 +5,7 @@ import os from "os";
 import { isInjectedTurn } from "../terminal/agentHistory.js";
 import { buildEditDiff, DIFF_TOOL_NAMES, collapsePersisted } from "./adapters/claudeAdapter.js";
 import { toolStart, toolResult, asyncHandle, taskNotificationFrom } from "./toolEvent.js";
+import { addSessionUsage, type SessionUsageStats } from "./usage.js";
 
 // Untrusted client-supplied id: plain ids only, plus a projects-dir jail below — `..` would otherwise read any file on disk.
 export const CLAUDE_SESSION_ID_RE = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$/;
@@ -145,6 +146,9 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
   const toolCalls = new Map<string, { name: string; input: any }>();
   // Launcher tool_use id by task handle: TaskStop names only the handle, and the row to close is the launcher's.
   const launcherOf = new Map<string, string>();
+  // The TUI writes no result record, so the chat's token totals are summed here, per API call.
+  const sessionUsage: SessionUsageStats = {};
+  const usageSeen = new Set<string>();
   // A notification ends the tool row it names — on this door the settle is the row's only end (no watchdog in a replay).
   const pushTaskNotification = (task: any) => {
     push(task);
@@ -242,6 +246,32 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
         data: { type: "system", subtype: d.subtype || "", record: slimSystemRecord(d) }
       });
     } else if (d.type === "assistant" && d.message) {
+      const u = d.message.usage;
+      // One record per content block repeats the same message id and usage; count each API call once.
+      if (u && d.message.id && !d.isSidechain && !usageSeen.has(d.message.id)) {
+        usageSeen.add(d.message.id);
+        const cacheRead = u.cache_read_input_tokens || 0;
+        const input = (u.input_tokens || 0) + cacheRead + (u.cache_creation_input_tokens || 0);
+        if (input) {
+          addSessionUsage(sessionUsage, { input, cached: cacheRead, output: u.output_tokens || 0 });
+          sessionUsage.sessionCacheWriteTokens = (sessionUsage.sessionCacheWriteTokens || 0) + (u.cache_creation_input_tokens || 0);
+          sessionUsage.sessionThinkingTokens = (sessionUsage.sessionThinkingTokens || 0) + (u.output_tokens_details?.thinking_tokens || 0);
+          sessionUsage.sessionApiCalls = (sessionUsage.sessionApiCalls || 0) + 1;
+          push({
+            event: "stats",
+            data: {
+              stats: {
+                ...sessionUsage,
+                inputTokens: u.input_tokens || 0,
+                outputTokens: u.output_tokens || 0,
+                cacheReadInputTokens: cacheRead,
+                cacheCreationInputTokens: u.cache_creation_input_tokens || 0,
+                contextTokens: input
+              }
+            }
+          });
+        }
+      }
       for (const item of d.message.content || []) {
         if (item.type === "thinking" && item.thinking) {
           push({ event: "thinking", data: { text: item.thinking } });

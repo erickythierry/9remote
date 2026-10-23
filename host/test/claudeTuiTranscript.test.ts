@@ -87,3 +87,17 @@ test("a failed TaskStop leaves the task running", () => {
   ]);
   assert.ok(!evs.some((e) => e.data?.subtype === "task_notification"));
 });
+
+test("assistant usage becomes session token stats, once per API call", () => {
+  const rec = (id: string, usage: any) => ({ type: "assistant", message: { id, usage, content: [{ type: "text", text: "x" }] } });
+  const evs = collect([
+    rec("m1", { input_tokens: 2, cache_read_input_tokens: 100, cache_creation_input_tokens: 8, output_tokens: 10 }),
+    rec("m1", { input_tokens: 2, cache_read_input_tokens: 100, cache_creation_input_tokens: 8, output_tokens: 10 }),
+    rec("m2", { input_tokens: 1, cache_read_input_tokens: 200, cache_creation_input_tokens: 0, output_tokens: 5 })
+  ]).filter((e) => e.event === "stats");
+  assert.equal(evs.length, 2);
+  assert.equal(evs[1].data.stats.contextTokens, 201);
+  assert.equal(evs[1].data.stats.sessionInputTokens, 110 + 201);
+  assert.equal(evs[1].data.stats.sessionCachedTokens, 300);
+  assert.equal(evs[1].data.stats.sessionOutputTokens, 15);
+});

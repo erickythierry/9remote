@@ -179,6 +179,28 @@ export function usageLabel(stats: any = {}): string | null {
   return `in ${formatTokens(input)}${cache} · out ${formatTokens(output)}`;
 }
 
+export interface UsageItem { key: string; icon: string; text: string; label: string }
+
+// The same totals as usageLabel, one item per figure so the bar can draw an icon for each; optional figures appear only once an engine reports them.
+export function usageItems(stats: any = {}): UsageItem[] {
+  const input = stats.sessionInputTokens || 0;
+  const output = stats.sessionOutputTokens || 0;
+  if (!input && !output) return [];
+  const items: UsageItem[] = [{ key: "in", icon: "ArrowUp", text: formatTokens(input), label: "Sent (cache included)" }];
+  if (input) {
+    const cached = stats.sessionCachedTokens || 0;
+    const write = stats.sessionCacheWriteTokens || 0;
+    items.push({
+      key: "cache", icon: "Database", text: `${Math.round(Math.min(1, cached / input) * 100)}%`,
+      label: `Cache hit · ${formatTokens(cached)} read${write ? ` · ${formatTokens(write)} written` : ""}`
+    });
+  }
+  items.push({ key: "out", icon: "ArrowDown", text: formatTokens(output), label: "Received" });
+  if (stats.sessionThinkingTokens > 0) items.push({ key: "think", icon: "Brain", text: formatTokens(stats.sessionThinkingTokens), label: "Thinking (part of received)" });
+  if (stats.sessionApiCalls > 0) items.push({ key: "calls", icon: "Zap", text: String(stats.sessionApiCalls), label: "API calls" });
+  return items;
+}
+
 // Estimate tokens streamed across all messages in current turn.
 export function estimateTurnTokens(messages: any[] = []): number {
   let chars = 0;

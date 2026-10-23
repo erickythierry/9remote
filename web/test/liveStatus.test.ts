@@ -4,7 +4,7 @@
 //
 // Run: node --import ./test/loader-alias.mjs web/test/liveStatus.test.mjs
 import assert from "node:assert/strict";
-import { describeLive, estimateTurnTokens, countTurnChanges, contextUsedTokens, contextFill, contextLabel, usageLabel, formatTokens } from "../features/ai/lib/liveStatus.js";
+import { describeLive, estimateTurnTokens, countTurnChanges, contextUsedTokens, contextFill, contextLabel, usageLabel, usageItems, formatTokens } from "../features/ai/lib/liveStatus.js";
 
 let pass = 0, fail = 0;
 const test = (name: string, fn: { (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): void; }) => {
@@ -303,6 +303,15 @@ test("the usage label reads in (cache %) · out, and stays hidden until an engin
   assert.equal(usageLabel({ sessionOutputTokens: 50 }), "in 0 · out 50", "no input means no cache share to claim");
   assert.equal(usageLabel({}), null);
   assert.equal(usageLabel(), null);
+});
+
+test("usage items carry an icon per figure and add the optional ones only when reported", () => {
+  const base = usageItems({ sessionInputTokens: 1000, sessionCachedTokens: 900, sessionOutputTokens: 50 });
+  assert.deepEqual(base.map((i) => [i.key, i.text]), [["in", "1k"], ["cache", "90%"], ["out", "50"]]);
+  const full = usageItems({ sessionInputTokens: 1000, sessionCachedTokens: 900, sessionCacheWriteTokens: 40, sessionOutputTokens: 50, sessionThinkingTokens: 20, sessionApiCalls: 3 });
+  assert.deepEqual(full.map((i) => i.key), ["in", "cache", "out", "think", "calls"]);
+  assert.match(full[1].label, /40 written/);
+  assert.deepEqual(usageItems({}), []);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

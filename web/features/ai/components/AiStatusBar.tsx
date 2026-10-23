@@ -5,7 +5,7 @@ import Icon, { Target, SquarePen, ChevronUp, Check, LayoutDashboard } from "@/sh
 import { getEngineConfig } from "../registry";
 import { useAiStore } from "@/shared/stores/aiStore";
 import { vibrate } from "@/shared/utils/vibration";
-import { contextLabel, usageLabel } from "../lib/liveStatus";
+import { contextLabel, usageItems } from "../lib/liveStatus";
 import TerminalBeam from "@/shared/components/ui/TerminalBeam";
 import BranchBadge from "@/features/terminal/components/BranchBadge";
 import { useWorkspaceGit } from "@/features/terminal/hooks/useWorkspaceGit";
@@ -49,7 +49,7 @@ export const AiStatusBar = memo(function AiStatusBar({
   // The model catalog states a window before any turn has run; the live stats win once they do.
   const catalogWindow = metadata?.modelOptions?.find((m: any) => m.id === metadata?.model)?.contextWindow || 0;
   const context = contextLabel(stats, catalogWindow);
-  const usage = usageLabel(stats);
+  const usage = usageItems(stats);
   // Wide screens always show the totals; a phone has no room, so a tap on the readout opens a popover with them.
   const [usageOpen, setUsageOpen] = useState(false);
   const modes = getEngineConfig(engine).permissionModes || [];
@@ -153,12 +153,17 @@ export const AiStatusBar = memo(function AiStatusBar({
 
       {/* Right: context window, branch (non-default only), New chat */}
       <div className="flex items-center gap-2.5 shrink-0">
-        {usage && (
-          <span className="hidden sm:flex items-center whitespace-nowrap" title="Tokens sent and received in this chat">
-            {usage}
+        {usage.length > 0 && (
+          <span className="hidden sm:flex items-center gap-2.5 whitespace-nowrap">
+            {usage.map((u) => (
+              <span key={u.key} className="flex items-center gap-1" title={u.label}>
+                <Icon name={u.icon} size={11} className="text-text-muted/70 shrink-0" />
+                {u.text}
+              </span>
+            ))}
           </span>
         )}
-        {(context || usage) && (
+        {(context || usage.length > 0) && (
           <div ref={usageRef} className="relative">
             <button
               type="button"
@@ -172,7 +177,12 @@ export const AiStatusBar = memo(function AiStatusBar({
             {usageOpen && (
               <div className="sm:hidden absolute right-0 bottom-[calc(100%+6px)] bg-surface border border-border-subtle rounded-brand shadow-xl p-2 z-50 flex flex-col gap-1 whitespace-nowrap">
                 {context && <span>Context: {context.text}</span>}
-                {usage && <span>{usage}</span>}
+                {usage.map((u) => (
+                  <span key={u.key} className="flex items-center gap-1.5">
+                    <Icon name={u.icon} size={11} className="text-text-muted/70 shrink-0" />
+                    {u.text} <span className="text-text-muted/70">{u.label}</span>
+                  </span>
+                ))}
               </div>
             )}
           </div>
