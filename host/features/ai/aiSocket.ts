@@ -182,9 +182,11 @@ function mirrorAiStatus(manager: AiManager, sessionId: string, event: string, da
   touchWorking(sessionId);
   // Replayed events carry old endings — mirrored they repaint a live turn as finished on every F5.
   if (data?.replay) return;
-  const state = EVENT_TO_STATE[event];
+  const session = manager.getSession(sessionId);
+  // A gate answered outside a turn (Claude's folder trust at boot) starts no work.
+  const state = event === "permission_resolved" && session && !session.isTurnRunning ? "idle" : EVENT_TO_STATE[event];
   if (!state) return;
-  const gateHeld = manager.getSession(sessionId)?.pendingPermission?.();
+  const gateHeld = session?.pendingPermission?.();
   if (restatesOverGate(event, getStatus(sessionId)?.state || "", gateHeld)) return;
   broadcastAiStatus?.(sessionId, state as any, engine, data);
 }
