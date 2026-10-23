@@ -107,6 +107,8 @@ const ACK_PATTERNS = [
   // timeout 600000ms). You will be notified on each event." Measured on this machine: 44
   // of these, every one closing its row immediately while the task it named kept running.
   /^Monitor started \(task\s+([A-Za-z0-9_-]+)/i,
+  // "Workflow launched in background. Task ID: w5jot812s\nSummary: ..."
+  /^Workflow launched in background\.\s*Task ID:\s*([A-Za-z0-9_-]+)/i,
 ];
 
 // Array-form results reach asyncHandle JSON-serialized; the text block's own wrapper is not part of the ack.
@@ -116,7 +118,7 @@ const JSON_TEXT_PREFIX = /^\[\{"type":"text","text":"/;
 // output alone: a result that merely CONTAINS an ack — a Read of a file that quotes one —
 // otherwise marks that row as live work forever (verified against a real log: two `Read`
 // results matched the shell pattern exactly that way).
-const LAUNCHER_TOOLS = new Set(["Agent", "Task", "Bash", "Monitor"]);
+const LAUNCHER_TOOLS = new Set(["Agent", "Task", "Bash", "Monitor", "Workflow"]);
 
 // Fields of a <task-notification> body — the only end signal the transcript/stream keeps for a task.
 const taskField = (text: string, name: string): string => {

@@ -39,7 +39,7 @@ function slimAttachmentRecord(record: any): { attachment: Record<string, any> } 
   return { attachment };
 }
 
-const LAUNCH_TASK_TOOLS = new Set(["Agent", "Task", "Bash", "Monitor"]);
+const LAUNCH_TASK_TOOLS = new Set(["Agent", "Task", "Bash", "Monitor", "Workflow"]);
 const STOP_TASK_TOOLS = new Set(["TaskStop", "KillShell"]);
 
 // hookInfos[].command is each hook's whole command line and can hold a token; the pane needs only counts and times.
@@ -208,9 +208,12 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
         // The TUI never writes task_started (only the stream-json CLI does); without it the strip and modal have no name or tool_use_id for the task.
         if (async) launcherOf.set(async.id, tr.tool_use_id);
         if (async && call && LAUNCH_TASK_TOOLS.has(call.name)) {
-          const agent = call.name === "Agent" || call.name === "Task";
+          const workflow = call.name === "Workflow";
+          const agent = call.name === "Agent" || call.name === "Task" || workflow;
           const input = call.input || {};
-          const description = input.description || (agent ? "" : input.command) || "";
+          // The workflow ack names the run in its `Summary:` line; its input carries only a script.
+          const workflowSummary = workflow ? /^Summary:\s*(.+)$/m.exec(resultText)?.[1] : "";
+          const description = input.description || workflowSummary || (agent ? "" : input.command) || "";
           const record = {
             type: "system", subtype: "task_started", task_id: async.id, tool_use_id: tr.tool_use_id,
             ...(description ? { description: String(description).slice(0, 200) } : null),
