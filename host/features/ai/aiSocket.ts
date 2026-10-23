@@ -254,18 +254,18 @@ function defaultModelFor(engine: string, launcher = "") {
 }
 
 // Display only: forcing it into argv would override a project-level setting.
-function defaultEffortFor(engine: string) {
-  return resolveDefaultEffort(engine) || (engine === "codex" ? "xhigh" : "");
+function defaultEffortFor(engine: string, launcher = "") {
+  return resolveDefaultEffort(engine, launcher) || (engine === "codex" ? "xhigh" : "");
 }
 
 // Sent on every create, live sessions too — the replay log carries no modelOptions.
 async function emitConnectMetadata(session: AiSession, engine: string) {
-  const skills = listSkills(engine, session.cwd);
-  const mcpServers = listMcpServers(engine, session.cwd);
-  const plugins = listPlugins(engine);
+  const launcher = launcherFor(session.id, engine);
+  const skills = listSkills(engine, session.cwd, launcher);
+  const mcpServers = listMcpServers(engine, session.cwd, launcher);
+  const plugins = listPlugins(engine, launcher);
   // Live '/' menu feed the adapter already fetched (opencode, omp).
   const commands = session.adapter?.metadata?.commands;
-  const launcher = launcherFor(session.id, engine);
   const modelOptions = await cachedModelOptionsFor(engine, launcher);
   // Kept on the session so a Clear can re-seed the log with the same metadata
   session.skills = skills;
@@ -278,7 +278,7 @@ async function emitConnectMetadata(session: AiSession, engine: string) {
     modelOptions,
     model: session.model || defaultModelFor(engine, launcher),
     // The session's pick wins; else the CLI's config is what the composer must show.
-    effort: session.effort || defaultEffortFor(engine)
+    effort: session.effort || defaultEffortFor(engine, launcher)
   }, !session.hasRecordedInit());
   return { skills, mcpServers, plugins, modelOptions };
 }
@@ -385,7 +385,7 @@ export function setupAiHandlers(socket: any, io: any, manager: AiManager = globa
         tuiTerminal: tuiTerminalFor(sessionId, engine),
         launcher: launcherFor(sessionId, engine),
         defaultModel: defaultModelFor(engine, launcherFor(sessionId, engine)),
-        defaultEffort: defaultEffortFor(engine) || options.defaultEffort
+        defaultEffort: defaultEffortFor(engine, launcherFor(sessionId, engine)) || options.defaultEffort
       };
       const session = manager.createSession(sessionId, engine, cwd, { ...spawnOptions, mock });
       let releaseCreate!: () => void;
@@ -426,7 +426,7 @@ export function setupAiHandlers(socket: any, io: any, manager: AiManager = globa
             tuiTerminal: tuiTerminalFor(sessionId, "claude"),
             launcher: launcherFor(sessionId, "claude"),
             defaultModel: defaultModelFor("claude", launcherFor(sessionId, "claude")),
-            defaultEffort: defaultEffortFor("claude")
+            defaultEffort: defaultEffortFor("claude", launcherFor(sessionId, "claude"))
           });
           await session.ready;
         }

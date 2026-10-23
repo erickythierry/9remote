@@ -1,9 +1,9 @@
-// Claude Code quota (Pro/Max OAuth): token from ~/.claude/.credentials.json or
+// Claude Code quota (Pro/Max OAuth): token from <config dir>/.credentials.json or
 // macOS Keychain, then GET the OAuth usage endpoint. API-key billing has no
 // subscription quota — surfaces as "unavailable" so the web segment hides.
 import { execFile } from "node:child_process";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import {
   CLAUDE_KEYCHAIN_SERVICE,
@@ -16,14 +16,17 @@ import {
 import { clampPercent, fetchJson, makeResult, parseResetTimestamp, readJsonFile } from "../lib/quotaWindow.js";
 import type { QuotaWindow } from "../lib/quotaWindow.js";
 import { errorMessage } from "../../../lib/errorMessage.js";
+import { claudeConfigDir, claudeProfileDirs } from "../../ai/claudeProfile.js";
 
 const execFileAsync = promisify(execFile);
 
 // Only the field the fetcher reads; the credentials file holds more.
 type ClaudeOAuth = { accessToken?: unknown };
 
+// The first profile holding credentials: the quota is the account's, and a profile with none has no account to ask about.
 function credentialsPath(): string {
-  return join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), ".credentials.json");
+  const files = [...new Set([claudeConfigDir(), ...claudeProfileDirs()])].map((dir) => join(dir, ".credentials.json"));
+  return files.find((f) => existsSync(f)) ?? files[0];
 }
 
 // Keychain item holds the same JSON as the credentials file. Windows/Linux

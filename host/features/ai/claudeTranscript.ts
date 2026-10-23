@@ -6,6 +6,7 @@ import { isInjectedTurn } from "../terminal/agentHistory.js";
 import { buildEditDiff, DIFF_TOOL_NAMES, collapsePersisted } from "./adapters/claudeAdapter.js";
 import { toolStart, toolResult, asyncHandle, taskNotificationFrom } from "./toolEvent.js";
 import { addSessionUsage, type SessionUsageStats } from "./usage.js";
+import { claudeProjectsDirs } from "./claudeProfile.js";
 
 // Untrusted client-supplied id: plain ids only, plus a projects-dir jail below — `..` would otherwise read any file on disk.
 export const CLAUDE_SESSION_ID_RE = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$/;
@@ -53,24 +54,26 @@ function slimSystemRecord(record: any): any {
   };
 }
 
-export function findTranscript(cwd: string, cliSessionId: string): string | null {
-  const projectsDir = path.join(os.homedir(), ".claude", "projects");
+export function findTranscript(cwd: string, cliSessionId: string, launcher: string = ""): string | null {
   const safeCwd = String(cwd).replace(/[/\\:]/g, "-");
-  let p = path.join(projectsDir, safeCwd, `${cliSessionId}.jsonl`);
-  if (!fs.existsSync(p) && !safeCwd.startsWith("-")) {
-    p = path.join(projectsDir, `-${safeCwd}`, `${cliSessionId}.jsonl`);
-  }
-  // The transcript lives under the dir the CLI was started in, not the terminal's current cwd — find by id on miss.
-  if (!fs.existsSync(p)) {
-    for (const entry of readdirOr(projectsDir)) {
-      const candidate = path.join(projectsDir, entry, `${cliSessionId}.jsonl`);
-      if (fs.existsSync(candidate)) { p = candidate; break; }
+  for (const projectsDir of claudeProjectsDirs(launcher)) {
+    let p = path.join(projectsDir, safeCwd, `${cliSessionId}.jsonl`);
+    if (!fs.existsSync(p) && !safeCwd.startsWith("-")) {
+      p = path.join(projectsDir, `-${safeCwd}`, `${cliSessionId}.jsonl`);
     }
+    // The transcript lives under the dir the CLI was started in, not the terminal's current cwd — find by id on miss.
+    if (!fs.existsSync(p)) {
+      for (const entry of readdirOr(projectsDir)) {
+        const candidate = path.join(projectsDir, entry, `${cliSessionId}.jsonl`);
+        if (fs.existsSync(candidate)) { p = candidate; break; }
+      }
+    }
+    // Defense in depth: even with the id validated, never read outside the projects dir.
+    const resolved = path.resolve(p);
+    if (!resolved.startsWith(path.resolve(projectsDir) + path.sep)) continue;
+    if (fs.existsSync(resolved)) return resolved;
   }
-  // Defense in depth: even with the id validated, never read outside the projects dir.
-  const resolved = path.resolve(p);
-  if (!resolved.startsWith(path.resolve(projectsDir) + path.sep)) return null;
-  return fs.existsSync(resolved) ? resolved : null;
+  return null;
 }
 
 // The CALL carries the edit strings, the result only the id — keyed like the live adapter's toolCalls.

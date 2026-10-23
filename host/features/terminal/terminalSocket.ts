@@ -16,6 +16,7 @@ import { setupInputHandlers } from "./handlers/InputHandler.js";
 import { setupPushHandlers } from "./handlers/PushHandler.js";
 import { reconcileClaudeEnv, autoEnableInstalledHooks, reconcileCodexTrust } from "./hookManager.js";
 import { isMcpEnabled, syncMcpConfig, MCP_CLIENTS } from "../../mcp/mcpConfig.js";
+import { learnLauncherProfiles } from "../ai/claudeProfile.js";
 import { readSettings } from "../../lib/settings.js";
 import { markSubscriptionDisconnected } from "./pushManager.js";
 import { clearNotification } from "./notificationManager.js";
@@ -335,6 +336,8 @@ export async function initializeTerminal() {
   // an auto-named terminal can first take its conversation's title.
   onAutoNameRequest(scheduleAutoName);
 
+  // A launcher can point claude at a profile outside ~/.claude-*; learn them before hooks and MCP are written.
+  try { learnLauncherProfiles(); } catch {}
   // Backfill scrollback env for users who enabled Claude hook before the fix
   try { reconcileClaudeEnv(); } catch {}
   // Auto-enable notify hooks for every installed AI tool (claude/codex/opencode)

@@ -10,6 +10,9 @@ import { createLogger } from "../../../lib/logger.js";
 const capsLogger = createLogger("terminal");
 import { listAgentClis, isCatalogAgent, agentRenameCommand, agentIdFromProcess } from "../agentCatalog.js";
 import { addCustomAgent, removeCustomAgent } from "../customAgents.js";
+import { learnLauncherProfiles } from "../../ai/claudeProfile.js";
+import { enableToolHook } from "../hookManager.js";
+import { syncMcpConfig } from "../../../mcp/mcpConfig.js";
 import { listAgentSessions, matchLiveSessions, conversationTitle, deleteAgentSession, searchAgentSessions } from "../agentHistory.js";
 import { getLiveConversations, forgetSession, claimResumedConversation, getConversation, getSessionAgent, setSessionAgent } from "../statusManager.js";
 import { setSessionMode, sendTerminalInput, CLEAR_LINE } from "../sessionMode.js";
@@ -427,6 +430,12 @@ export function setupSessionHandlers(socket: Socket, io: Server, sessions: Map<s
     if (!isCatalogAgent(base)) return callback?.({ success: false, error: "Unknown base agent" });
     const res = addCustomAgent({ label, base, cmd });
     if (res.error) return callback?.({ success: false, error: res.error });
+    // A new claude launcher may bring its own profile: learn it, then give it the hooks and MCP entry.
+    if (base === "claude") {
+      learnLauncherProfiles();
+      enableToolHook("claude");
+      try { syncMcpConfig(); } catch {}
+    }
     callback?.({ success: true, agent: res.agent });
   });
 

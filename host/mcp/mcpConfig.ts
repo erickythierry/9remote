@@ -10,6 +10,7 @@ import { getMcpToken } from "../lib/mcpToken.js";
 import { readSettings, writeSettings } from "../lib/settings.js";
 import { writeJsonAtomic } from "../lib/atomicFile.js";
 import { createLogger } from "../lib/logger.js";
+import { claudeProfileDirs, claudeStateFile } from "../features/ai/claudeProfile.js";
 import type { URL as FileUrl } from "node:url";
 
 const logger = createLogger("mcp");
@@ -55,30 +56,34 @@ function pruneEmpty(config: ConfigObject, keyPath: readonly string[]) {
 // A CLI keeping its servers under a JSON key (Claude Code: top-level mcpServers).
 // The file holds the user's whole config, so it is edited in place, never rewritten.
 // keyPath may be a function when the CLI's own shape depends on what is already there.
-function jsonClient({ file, keyPath = ["mcpServers"], entry, mode = 0o600 }: { file: () => string; keyPath?: string[] | ((config: ConfigObject) => string[]); entry: () => unknown; mode?: number }) {
+function jsonClient({ files, keyPath = ["mcpServers"], entry, mode = 0o600 }: { files: () => string[]; keyPath?: string[] | ((config: ConfigObject) => string[]); entry: () => unknown; mode?: number }) {
   const pathFor = (config: ConfigObject) => (typeof keyPath === "function" ? keyPath(config) : keyPath);
   return {
     enable() {
-      const filePath = file();
-      const config = readJson(filePath);
-      containerAt(config, pathFor(config), true)![NAME] = entry();
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      writeJsonAtomic(filePath, config, { mode });
+      for (const filePath of files()) {
+        const config = readJson(filePath);
+        containerAt(config, pathFor(config), true)![NAME] = entry();
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        writeJsonAtomic(filePath, config, { mode });
+      }
     },
     disable() {
-      const filePath = file();
-      if (!fs.existsSync(filePath)) return;
-      const config = readJson(filePath);
-      const keys = pathFor(config);
-      const container = containerAt(config, keys, false);
-      if (!container?.[NAME]) return;
-      delete container[NAME];
-      pruneEmpty(config, keys);
-      writeJsonAtomic(filePath, config, { mode });
+      for (const filePath of files()) {
+        if (!fs.existsSync(filePath)) continue;
+        const config = readJson(filePath);
+        const keys = pathFor(config);
+        const container = containerAt(config, keys, false);
+        if (!container?.[NAME]) continue;
+        delete container[NAME];
+        pruneEmpty(config, keys);
+        writeJsonAtomic(filePath, config, { mode });
+      }
     },
     isEnabled() {
-      const config = readJson(file());
-      return !!containerAt(config, pathFor(config), false)?.[NAME];
+      return files().every((filePath) => {
+        const config = readJson(filePath);
+        return !!containerAt(config, pathFor(config), false)?.[NAME];
+      });
     },
   };
 }
@@ -126,13 +131,13 @@ function blockClient({ file, lines }: { file: () => string; lines: () => string[
 // as a static header — an env var would have to exist in whatever shell launched the CLI.
 const CLIENTS: Partial<Record<string, { enable(): void; disable(): void; isEnabled(): boolean }>> = {
   claude: jsonClient({
-    file: () => homeSub(".claude.json"),
+    files: () => claudeProfileDirs().map(claudeStateFile),
     entry: () => ({ type: "http", url: URL, headers: { Authorization: AUTH(), [SESSION_HEADER]: `\${${SESSION_ENV}}` } }),
   }),
   // opencode v1 keys servers straight off `mcp`; v2 nests them under `mcp.servers`.
   // The existing file says which, so an upgrade is followed rather than fought.
   opencode: jsonClient({
-    file: () => homeSub(".config", "opencode", "opencode.json"),
+    files: () => [homeSub(".config", "opencode", "opencode.json")],
     keyPath: (config) => ((config?.mcp as ConfigObject | undefined)?.servers ? ["mcp", "servers"] : ["mcp"]),
     entry: () => ({ type: "remote", url: URL, enabled: true, headers: { Authorization: AUTH(), [SESSION_HEADER]: `{env:${SESSION_ENV}}` } }),
     // Not a secrets-only file: it is the user's own opencode config
@@ -153,28 +158,28 @@ const CLIENTS: Partial<Record<string, { enable(): void; disable(): void; isEnabl
   // Qwen forks Gemini CLI's schema: settings.json, httpUrl + headers, trust
   // skips the per-call tool confirmation.
   "qwen-code": jsonClient({
-    file: () => homeSub(".qwen", "settings.json"),
+    files: () => [homeSub(".qwen", "settings.json")],
     entry: () => ({ httpUrl: URL, headers: { Authorization: AUTH() }, trust: true }),
   }),
   cursor: jsonClient({
-    file: () => homeSub(".cursor", "mcp.json"),
+    files: () => [homeSub(".cursor", "mcp.json")],
     entry: () => ({ url: URL, headers: { Authorization: AUTH() } }),
   }),
   copilot: jsonClient({
-    file: () => homeSub(".copilot", "mcp-config.json"),
+    files: () => [homeSub(".copilot", "mcp-config.json")],
     entry: () => ({ type: "http", url: URL, headers: { Authorization: AUTH() } }),
   }),
   kimi: jsonClient({
-    file: () => homeSub(".kimi-code", "mcp.json"),
+    files: () => [homeSub(".kimi-code", "mcp.json")],
     entry: () => ({ url: URL, headers: { Authorization: AUTH() } }),
   }),
   // Droid/Crush expand ${VAR} in headers, so the session id rides along there.
   droid: jsonClient({
-    file: () => homeSub(".factory", "mcp.json"),
+    files: () => [homeSub(".factory", "mcp.json")],
     entry: () => ({ type: "http", url: URL, headers: { Authorization: AUTH(), [SESSION_HEADER]: `\${${SESSION_ENV}}` } }),
   }),
   crush: jsonClient({
-    file: () => homeSub(".config", "crush", "crush.json"),
+    files: () => [homeSub(".config", "crush", "crush.json")],
     keyPath: ["mcp"],
     entry: () => ({ type: "http", url: URL, headers: { Authorization: AUTH(), [SESSION_HEADER]: `\${${SESSION_ENV}}` } }),
   }),

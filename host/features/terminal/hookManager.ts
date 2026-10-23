@@ -7,6 +7,7 @@ import { SERVER_PORT, PATHS as APP_PATHS, CLAUDE_SCROLLBACK_ENV, AI_TOOLS } from
 import { CLAUDE_QUESTION_WAIT_MS } from "../ai/constants.js";
 import { writeJsonAtomic } from "../../lib/atomicFile.js";
 import { hookSessionIdKeys } from "./agentCatalog.js";
+import { claudeProfileDirs } from "../ai/claudeProfile.js";
 
 type HookEntry = { command?: unknown; hooks?: HookEntry[]; [k: string]: unknown };
 type HookSettings = { hooks?: Record<string, HookEntry[]>; env?: Record<string, string>; name?: string; description?: string; [k: string]: unknown };
@@ -27,6 +28,9 @@ const envDir = (envVar: string, ...fallback: string[]) => {
   const v = process.env[envVar];
   return v && v.trim() ? v.trim() : homeSub(...fallback);
 };
+
+// Every profile's settings.json: the CLI reads hooks from its own config dir, so each one needs ours.
+const claudeSettingsFiles = (): string[] => claudeProfileDirs().map((dir) => path.join(dir, "settings.json"));
 
 const PATHS: Record<string, () => string> = {
   claude: () => homeSub(".claude", "settings.json"),
@@ -70,7 +74,7 @@ const buildCurlCmd = (type: string, tool: string, { sessionId = false } = {}) =>
 
 // Legacy config-dir fallback for the original four tools (binary-on-PATH is the primary check)
 const TOOL_DIRS: Record<string, () => string | string[]> = {
-  claude: () => homeSub(".claude"),
+  claude: () => claudeProfileDirs(),
   codex: () => homeSub(".codex"),
   opencode: () => [homeSub(".config", "opencode"), homeSub(".opencode")],
 };
@@ -123,28 +127,18 @@ const gateEntry = (matcher: string): HookEntry => ({
   }]
 });
 
-function applyClaudeEnv(settings: HookSettings) {
+// One backup per profile's settings file, so a second profile never overwrites the first one's originals.
+function applyClaudeEnv(settings: HookSettings, filePath: string) {
   const backup: Record<string, string | null> = {};
   const env: Record<string, string> = settings.env || {};
   for (const k of Object.keys(CLAUDE_SCROLLBACK_ENV)) backup[k] = env[k] ?? null;
-  writeJsonFile(CLAUDE_ENV_BACKUP_FILE, backup);
+  const all = readJsonFile<Record<string, Record<string, string | null>>>(CLAUDE_ENV_BACKUP_FILE);
+  writeJsonFile(CLAUDE_ENV_BACKUP_FILE, { ...all, [filePath]: backup });
   settings.env = { ...env, ...CLAUDE_SCROLLBACK_ENV };
 }
 
-function restoreClaudeEnv(settings: HookSettings) {
-  const backup = readJsonFile<Record<string, string | null>>(CLAUDE_ENV_BACKUP_FILE);
-  const env: Record<string, string> = settings.env || {};
-  for (const k of Object.keys(CLAUDE_SCROLLBACK_ENV)) {
-    if (backup[k] == null) delete env[k];
-    else env[k] = backup[k];
-  }
-  if (Object.keys(env).length) settings.env = env;
-  else delete settings.env;
-  try { if (fs.existsSync(CLAUDE_ENV_BACKUP_FILE)) fs.unlinkSync(CLAUDE_ENV_BACKUP_FILE); } catch {}
-}
-
 // ─── Kind: json-nested (Claude-style hooks object) ──────────────────────────
-function makeNestedJsonHook(tool: string, events: Record<string, string>, timeoutFn: (ms: number) => number, { matchers = {}, extra, sessionId = false, extraEntries = {} }: { matchers?: Record<string, string>; extra?: (s: HookSettings) => void; sessionId?: boolean; extraEntries?: Record<string, HookEntry[]> } = {}) {
+function makeNestedJsonHook(tool: string, events: Record<string, string>, timeoutFn: (ms: number) => number, { matchers = {}, extra, sessionId = false, extraEntries = {} }: { matchers?: Record<string, string>; extra?: (s: HookSettings, filePath: string) => void; sessionId?: boolean; extraEntries?: Record<string, HookEntry[]> } = {}) {
   const buildEntry = (key: string, type: string): HookEntry => ({
     hooks: [{ type: "command", command: buildCurlCmd(type, tool, { sessionId }), timeout: timeoutFn(STOP_MS) }],
     ...(matchers[key] != null ? { matcher: matchers[key] } : {}),
@@ -160,7 +154,7 @@ function makeNestedJsonHook(tool: string, events: Record<string, string>, timeou
         hooks[key] = [...(hooks[key] || []).filter((g) => !isOwn(g)), buildEntry(key, type), ...(extraEntries[key] || [])];
       }
       settings.hooks = hooks;
-      if (extra) extra(settings);
+      if (extra) extra(settings, filePath);
       writeJsonFile(filePath, settings);
       return { success: true };
     },
@@ -173,7 +167,7 @@ function makeNestedJsonHook(tool: string, events: Record<string, string>, timeou
         }
         if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
       }
-      if (extra) extra(settings);
+      if (extra) extra(settings, filePath);
       writeJsonFile(filePath, settings);
       return { success: true };
     },
@@ -745,32 +739,31 @@ const TOOL_REGISTRY: Record<string, ToolHook> = {
 // ─── Public API ─────────────────────────────────────────────────────────────
 export const SUPPORTED_TOOLS = AI_TOOLS;
 
-export function enableToolHook(tool: string): ToolHookResult {
+// The files one tool's hook lives in: claude has one per profile, every other tool has one.
+const hookFiles = (tool: string): string[] => (tool === "claude" ? claudeSettingsFiles() : [PATHS[tool]()]);
+const FILELESS_TOOLS = new Set(["codex", "opencode", "amp", "pi", "omp"]);
+
+function runOnFiles(tool: string, action: "enable" | "disable"): ToolHookResult {
   const hook = TOOL_REGISTRY[tool];
   if (!hook) return { success: false, error: "Unknown tool" };
   try {
-    if (tool === "codex" || tool === "opencode" || tool === "amp" || tool === "pi" || tool === "omp") return hook.enable();
-    return hook.enable(PATHS[tool]());
+    if (FILELESS_TOOLS.has(tool)) return hook[action]();
+    const results = hookFiles(tool).map((file) => hook[action](file));
+    const failed = results.find((r) => !r.success);
+    return failed ?? { success: true };
   } catch (e) {
     return { success: false, error: errMsg(e) };
   }
 }
 
-export function disableToolHook(tool: string): ToolHookResult {
-  const hook = TOOL_REGISTRY[tool];
-  if (!hook) return { success: false, error: "Unknown tool" };
-  try {
-    if (tool === "codex" || tool === "opencode" || tool === "amp" || tool === "pi" || tool === "omp") return hook.disable();
-    return hook.disable(PATHS[tool]());
-  } catch (e) {
-    return { success: false, error: errMsg(e) };
-  }}
+export const enableToolHook = (tool: string): ToolHookResult => runOnFiles(tool, "enable");
+export const disableToolHook = (tool: string): ToolHookResult => runOnFiles(tool, "disable");
 
 function isToolHookEnabled(tool: string) {
   const hook = TOOL_REGISTRY[tool];
   if (!hook) return false;
-  if (tool === "codex" || tool === "opencode" || tool === "amp" || tool === "pi" || tool === "omp") return hook.isEnabled();
-  return hook.isEnabled(PATHS[tool]());
+  if (FILELESS_TOOLS.has(tool)) return hook.isEnabled();
+  return hookFiles(tool).every((file) => hook.isEnabled(file));
 }
 
 function binaryOnPath(bin: string) {
@@ -823,12 +816,12 @@ export function getHookStatus() {
 }
 
 export function reconcileClaudeEnv() {
-  const filePath = PATHS.claude();
-  const settings = readJsonFile(filePath);
-  if (!settings.hooks?.Stop && !settings.hooks?.Notification) return;
-  const env: Record<string, string> = settings.env || {};
-  const needsApply = Object.entries(CLAUDE_SCROLLBACK_ENV).some(([k, v]) => env[k] !== v);
-  if (!needsApply) return;
-  applyClaudeEnv(settings);
-  writeJsonFile(filePath, settings);
+  for (const filePath of claudeSettingsFiles()) {
+    const settings = readJsonFile<HookSettings>(filePath);
+    if (!settings.hooks?.Stop && !settings.hooks?.Notification) continue;
+    const env: Record<string, string> = settings.env || {};
+    if (!Object.entries(CLAUDE_SCROLLBACK_ENV).some(([k, v]) => env[k] !== v)) continue;
+    applyClaudeEnv(settings, filePath);
+    writeJsonFile(filePath, settings);
+  }
 }

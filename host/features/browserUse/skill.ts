@@ -5,7 +5,7 @@
 // enabled; disabling removes it again. Idempotent on content.
 import fs from "node:fs";
 import os from "node:os";
-import { skillDirs } from "../ai/skills.js";
+import { skillDirGroups } from "../ai/skills.js";
 import { createLogger } from "../../lib/logger.js";
 
 const logger = createLogger("browserUse");
@@ -20,31 +20,33 @@ const SKILL_MD = "---\nname: 9r-browser\ndescription: Drive the machine's Chrome
 
 export const SKILL_ENGINES = ["claude", "codex", "opencode", "antigravity", "hermes"];
 
-// Install into ONE engine's first existing skills dir. Idempotent on content.
+// Install into ONE engine's first existing skills dir (per profile for claude). Idempotent on content.
 // Best-effort per dir: one unwritable dir must not fail the whole install.
 export async function installSkillForEngine(engine: string): Promise<{ installed: string[] }> {
   const home = os.homedir();
   const installed = [];
-  // Sweep renamed dirs first so no engine ever sees old and new side by side.
-  for (const dir of skillDirs(engine, home, null)) {
-    for (const legacy of LEGACY_SKILL_NAMES) {
-      try { fs.rmSync(`${dir}/${legacy}`, { recursive: true, force: true }); }
-      catch (e) { logger.warn(`legacy skill remove from ${dir} failed: ${(e as Error).message}`); }
+  for (const dirs of skillDirGroups(engine, home)) {
+    // Sweep renamed dirs first so no engine ever sees old and new side by side.
+    for (const dir of dirs) {
+      for (const legacy of LEGACY_SKILL_NAMES) {
+        try { fs.rmSync(`${dir}/${legacy}`, { recursive: true, force: true }); }
+        catch (e) { logger.warn(`legacy skill remove from ${dir} failed: ${(e as Error).message}`); }
+      }
     }
-  }
-  for (const dir of skillDirs(engine, home, null)) {
-    // Only install where the engine already keeps a skills library.
-    if (!fs.existsSync(dir)) continue;
-    try {
-      const target = `${dir}/${SKILL_NAME}`;
-      fs.mkdirSync(target, { recursive: true });
-      const file = `${target}/SKILL.md`;
-      const current = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
-      if (current !== SKILL_MD) fs.writeFileSync(file, SKILL_MD);
-      installed.push(`${engine}:${target}`);
-      break;
-    } catch (e) {
-      logger.warn(`skill install into ${dir} failed: ${(e as Error).message}`);
+    for (const dir of dirs) {
+      // Only install where the engine already keeps a skills library.
+      if (!fs.existsSync(dir)) continue;
+      try {
+        const target = `${dir}/${SKILL_NAME}`;
+        fs.mkdirSync(target, { recursive: true });
+        const file = `${target}/SKILL.md`;
+        const current = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+        if (current !== SKILL_MD) fs.writeFileSync(file, SKILL_MD);
+        installed.push(`${engine}:${target}`);
+        break;
+      } catch (e) {
+        logger.warn(`skill install into ${dir} failed: ${(e as Error).message}`);
+      }
     }
   }
   return { installed };
@@ -58,7 +60,7 @@ export function removeAllInstalledSkills(): { removed: string[]; failed: string[
   const removed = [];
   const failed = [];
   for (const engine of SKILL_ENGINES) {
-    for (const dir of skillDirs(engine, home, null)) {
+    for (const dir of skillDirGroups(engine, home).flat()) {
       for (const name of [SKILL_NAME, ...LEGACY_SKILL_NAMES]) {
         const target = `${dir}/${name}`;
         if (!fs.existsSync(target)) continue;

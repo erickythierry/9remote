@@ -9,6 +9,7 @@ import { writeJsonAtomic } from "../../lib/atomicFile.js";
 import { getExtendedEnv } from "./adapters/env.js";
 import { AI_MODEL_CACHE_TTL_MS } from "./constants.js";
 import { probeLauncher } from "./launcherProbe.js";
+import { claudeConfigDir } from "./claudeProfile.js";
 
 const require = createRequire(import.meta.url);
 
@@ -44,18 +45,18 @@ const FALLBACK: ModelOption[] = [
 const CODEX_CATALOG_TIMEOUT_MS = 5000;
 const OPENCODE_CATALOG_TIMEOUT_MS = 10000;
 
-function readClaudeSettings(): Record<string, any> {
+function readClaudeSettings(launcher: string = ""): Record<string, any> {
   try {
-    const file = path.join(os.homedir(), ".claude", "settings.json");
+    const file = path.join(claudeConfigDir(launcher), "settings.json");
     return JSON.parse(fs.readFileSync(file, "utf8"));
   } catch {
     return {};
   }
 }
 
-// What claude will see: the launcher's own env and --settings win over ~/.claude/settings.json.
+// What claude will see: the launcher's own env and --settings win over <config dir>/settings.json.
 function claudeConfigFor(launcher: string): { env: Record<string, any>; picker: any[]; model?: string } {
-  const base = readClaudeSettings();
+  const base = readClaudeSettings(launcher);
   const probe = probeLauncher(launcher);
   if (!probe) return { env: base.env || {}, picker: [], model: base.model };
   return {
@@ -418,9 +419,9 @@ export function resolveDefaultModel(engine: string, launcher: string = ""): stri
 
 // Resolve default reasoning effort from preferences or CLI configuration.
 // Engine → its own default-effort reader; an engine with no entry has none to read.
-const DEFAULT_EFFORT_READERS: Record<string, () => string> = {
-  claude() {
-    const level = readClaudeSettings().effortLevel;
+const DEFAULT_EFFORT_READERS: Record<string, (launcher?: string) => string> = {
+  claude(launcher = "") {
+    const level = readClaudeSettings(launcher).effortLevel;
     return typeof level === "string" ? level.trim() : "";
   },
   codex() {
@@ -439,7 +440,7 @@ const DEFAULT_EFFORT_READERS: Record<string, () => string> = {
   }
 };
 
-export function resolveDefaultEffort(engine: string): string {
+export function resolveDefaultEffort(engine: string, launcher: string = ""): string {
   const saved = readAiPreferences()[engine]?.effort;
   if (typeof saved === "string" && saved) return saved;
   return DEFAULT_EFFORT_READERS[engine]?.() || "";

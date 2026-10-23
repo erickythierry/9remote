@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { claudeConfigDir, claudeStateFile } from "./claudeProfile.js";
 
 export interface McpServerItem {
   id: string;
@@ -22,14 +23,14 @@ export interface McpServerItem {
 // own: the codex branch used to run for every engine, so the modal listed claude's
 // servers as codex's and vice versa. An engine with no reader returns nothing rather
 // than borrowing another's.
-const MCP_SERVER_READERS: Record<string, (cwd?: string) => McpServerItem[]> = {
+const MCP_SERVER_READERS: Record<string, (cwd?: string, launcher?: string) => McpServerItem[]> = {
   claude: claudeServers,
-  codex: codexServers,
-  opencode: opencodeServers
+  codex: () => codexServers(),
+  opencode: () => opencodeServers()
 };
 
-export function listMcpServers(engine: string = "claude", cwd?: string): McpServerItem[] {
-  return MCP_SERVER_READERS[engine]?.(cwd) ?? [];
+export function listMcpServers(engine: string = "claude", cwd?: string, launcher: string = ""): McpServerItem[] {
+  return MCP_SERVER_READERS[engine]?.(cwd, launcher) ?? [];
 }
 
 /** OpenCode keeps them in ~/.config/opencode/opencode.json under mcp.servers. */
@@ -82,15 +83,15 @@ function ancestors(cwd: string): string[] {
 
 /**
  * Claude's servers, by the scopes the CLI itself merges: user and per-project entries in
- * ~/.claude.json, the project's .mcp.json, and the .mcp.json of each enabled plugin.
- * ~/.claude/settings.json is kept for older setups. A name defined twice shows once.
+ * the profile's .claude.json, the project's .mcp.json, and the .mcp.json of each enabled plugin.
+ * <config dir>/settings.json is kept for older setups. A name defined twice shows once.
  */
-function claudeServers(cwd: string = process.cwd()): McpServerItem[] {
-  const home = os.homedir();
+function claudeServers(cwd: string = process.cwd(), launcher: string = ""): McpServerItem[] {
+  const configDir = claudeConfigDir(launcher);
   const out = new Map<string, McpServerItem>();
   const add = (name: string, cfg: any, id = name) => { if (!out.has(id)) out.set(id, toItem(name, cfg, id)); };
 
-  const state = readJson(path.join(home, ".claude.json"));
+  const state = readJson(claudeStateFile(configDir));
   const dirs = ancestors(cwd);
   for (const dir of dirs) {
     for (const [name, cfg] of Object.entries(state?.projects?.[dir]?.mcpServers || {})) add(name, cfg);
@@ -99,10 +100,10 @@ function claudeServers(cwd: string = process.cwd()): McpServerItem[] {
     for (const [name, cfg] of Object.entries(serversOf(readJson(path.join(dir, ".mcp.json"))))) add(name, cfg);
   }
   for (const [name, cfg] of Object.entries(state?.mcpServers || {})) add(name, cfg);
-  for (const [name, cfg] of Object.entries(readJson(path.join(home, ".claude", "settings.json"))?.mcpServers || {})) add(name, cfg);
+  for (const [name, cfg] of Object.entries(readJson(path.join(configDir, "settings.json"))?.mcpServers || {})) add(name, cfg);
 
-  const enabled = readJson(path.join(home, ".claude", "settings.json"))?.enabledPlugins || {};
-  const installed = readJson(path.join(home, ".claude", "plugins", "installed_plugins.json"));
+  const enabled = readJson(path.join(configDir, "settings.json"))?.enabledPlugins || {};
+  const installed = readJson(path.join(configDir, "plugins", "installed_plugins.json"));
   for (const [key, entries] of Object.entries<any>(installed?.plugins || {})) {
     if (!enabled[key]) continue;
     const [plugin] = key.split("@");
@@ -112,7 +113,7 @@ function claudeServers(cwd: string = process.cwd()): McpServerItem[] {
       add(name, cfg, `plugin:${plugin}:${name}`);
     }
   }
-  const needsAuth = needsAuthIds(home);
+  const needsAuth = needsAuthIds(configDir);
   return [...out.values()].map((s) => (needsAuth.has(s.id) ? { ...s, status: "needs-auth" } : s));
 }
 
@@ -120,8 +121,8 @@ function claudeServers(cwd: string = process.cwd()): McpServerItem[] {
 const NEEDS_AUTH_DEFAULT_TTL_MS = 15 * 60 * 1000;
 
 /** Servers the CLI flagged as unauthenticated: live entries of its needs-auth cache. */
-function needsAuthIds(home: string): Set<string> {
-  const cache = readJson(path.join(home, ".claude", "mcp-needs-auth-cache.json")) || {};
+function needsAuthIds(configDir: string): Set<string> {
+  const cache = readJson(path.join(configDir, "mcp-needs-auth-cache.json")) || {};
   const now = Date.now();
   return new Set(
     Object.entries<any>(cache)

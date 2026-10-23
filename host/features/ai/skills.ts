@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { installedPlugins } from "./plugins.js";
+import { claudeConfigDir, claudeProfileDirs } from "./claudeProfile.js";
 
 export interface SkillItem {
   id: string;
@@ -76,10 +77,12 @@ function scanSkillDir(baseDir: string, source: SkillItem["source"], plugin?: str
   return results;
 }
 
-export function listSkills(engine: string = "claude", workspacePath: string | null = null): SkillItem[] {
+export function listSkills(engine: string = "claude", workspacePath: string | null = null, launcher: string = ""): SkillItem[] {
   const now = Date.now();
-  if (cachedSkills[engine] && now - cachedSkills.at < CACHE_TTL_MS) {
-    return cachedSkills[engine] as SkillItem[];
+  const configDir = claudeConfigDir(launcher);
+  const cacheKey = engine === "claude" ? `${engine}:${configDir}` : engine;
+  if (cachedSkills[cacheKey] && now - cachedSkills.at < CACHE_TTL_MS) {
+    return cachedSkills[cacheKey] as SkillItem[];
   }
 
   const home = os.homedir();
@@ -87,7 +90,7 @@ export function listSkills(engine: string = "claude", workspacePath: string | nu
   // inferred. The old shape was `codex ? codex-dir : claude-dir`, so opencode and
   // antigravity were shown claude's library as if it were theirs: 18 rows of another
   // CLI's skills, in a modal that offers them as things this engine can run.
-  const dirs = skillDirs(engine, home, workspacePath);
+  const dirs = skillDirs(engine, home, workspacePath, configDir);
 
   const map = new Map<string, SkillItem>();
   for (const dir of dirs) {
@@ -98,7 +101,7 @@ export function listSkills(engine: string = "claude", workspacePath: string | nu
   }
   // Only claude has plugins this host can read.
   if (engine === "claude") {
-    for (const plugin of installedPlugins(home).filter((p) => p.enabled)) {
+    for (const plugin of installedPlugins(configDir).filter((p) => p.enabled)) {
       for (const s of scanSkillDir(path.join(plugin.installPath, "skills"), "plugin", plugin.name, true)) {
         if (!map.has(s.id)) map.set(s.id, s);
       }
@@ -106,7 +109,7 @@ export function listSkills(engine: string = "claude", workspacePath: string | nu
   }
 
   const list = Array.from(map.values());
-  cachedSkills[engine] = list;
+  cachedSkills[cacheKey] = list;
   cachedSkills.at = now;
   return list;
 }
@@ -114,7 +117,7 @@ export function listSkills(engine: string = "claude", workspacePath: string | nu
 /** Every place one engine reads skills from, most specific last. */
 // Engine → its skill directories, most specific last; an engine nobody has taught gets
 // no library rather than another engine's.
-const SKILL_DIRS: Record<string, (home: string, workspacePath?: string | null) => string[]> = {
+const SKILL_DIRS: Record<string, (home: string, workspacePath?: string | null, configDir?: string) => string[]> = {
   codex: (home) => [path.join(home, ".codex", "skills")],
   opencode: (home) => [path.join(home, ".config", "opencode", "skills")],
   // Both are real: the user's own library and the CLI's shipped ones.
@@ -122,9 +125,9 @@ const SKILL_DIRS: Record<string, (home: string, workspacePath?: string | null) =
     path.join(home, ".gemini", "skills"),
     path.join(home, ".gemini", "antigravity-cli", "builtin", "skills")
   ],
-  claude: (home, workspacePath) => [
-    path.join(home, ".claude", "skills"),
-    path.join(home, ".claude", "skills copy"),
+  claude: (home, workspacePath, configDir = path.join(home, ".claude")) => [
+    path.join(configDir, "skills"),
+    path.join(configDir, "skills copy"),
     ...(workspacePath ? [path.join(workspacePath, ".claude", "skills")] : [])
   ],
   // Hermes resolves skills only from its home (tools/skills_tool.py: "all
@@ -137,6 +140,12 @@ const SKILL_DIRS: Record<string, (home: string, workspacePath?: string | null) =
   ]
 };
 
-export function skillDirs(engine: string, home: string, workspacePath?: string | null): string[] {
-  return SKILL_DIRS[engine]?.(home, workspacePath) || [];
+export function skillDirs(engine: string, home: string, workspacePath?: string | null, configDir?: string): string[] {
+  return SKILL_DIRS[engine]?.(home, workspacePath, configDir) || [];
+}
+
+/** Skill dirs for writing, one group per library: claude has one per profile, every other engine has its one. */
+export function skillDirGroups(engine: string, home: string): string[][] {
+  if (engine !== "claude") return [skillDirs(engine, home, null)];
+  return claudeProfileDirs().map((dir) => skillDirs(engine, home, null, dir));
 }

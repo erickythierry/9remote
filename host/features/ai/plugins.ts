@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
+import { claudeConfigDir } from "./claudeProfile.js";
 
 export interface PluginItem {
   id: string;
@@ -31,12 +31,12 @@ const countSkills = (dir: string) => entriesOf(dir).filter((e) => fs.existsSync(
 const countMd = (dir: string) => entriesOf(dir).filter((e) => e.isFile() && e.name.endsWith(".md")).length;
 
 /**
- * Plugins the CLI has installed, enabled or not: ~/.claude/plugins/installed_plugins.json
- * names each one's directory, ~/.claude/settings.json says which are on.
+ * Plugins the CLI has installed, enabled or not: <config dir>/plugins/installed_plugins.json
+ * names each one's directory, <config dir>/settings.json says which are on.
  */
-export function installedPlugins(home: string = os.homedir()): InstalledPlugin[] {
-  const enabled = readJson(path.join(home, ".claude", "settings.json"))?.enabledPlugins || {};
-  const installed = readJson(path.join(home, ".claude", "plugins", "installed_plugins.json"));
+export function installedPlugins(configDir: string = claudeConfigDir()): InstalledPlugin[] {
+  const enabled = readJson(path.join(configDir, "settings.json"))?.enabledPlugins || {};
+  const installed = readJson(path.join(configDir, "plugins", "installed_plugins.json"));
   const out: InstalledPlugin[] = [];
   for (const [key, entries] of Object.entries<any>(installed?.plugins || {})) {
     const entry = Array.isArray(entries) ? entries[0] : null;
@@ -59,7 +59,7 @@ export function installedPlugins(home: string = os.homedir()): InstalledPlugin[]
 }
 
 // Only claude has a plugin system this host can read; another engine gets none rather than claude's.
-export function listPlugins(engine: string = "claude"): PluginItem[] {
+export function listPlugins(engine: string = "claude", launcher: string = ""): PluginItem[] {
   if (engine !== "claude") return [];
-  return installedPlugins().map(({ installPath, ...item }) => item);
+  return installedPlugins(claudeConfigDir(launcher)).map(({ installPath, ...item }) => item);
 }

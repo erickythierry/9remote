@@ -3,7 +3,6 @@
 // switching between chat and terminal never stops the CLI or forks the conversation.
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import * as daemonClient from "../terminal/ptyDaemonClient.js";
@@ -12,6 +11,7 @@ import { getConversation, setConversationId, getLastOutputAt, getStatus, getSess
 import { isTuiChatSurface, engineFromAgent } from "../terminal/conversationModes.js";
 import { CLEAR_LINE } from "../terminal/sessionMode.js";
 import { UPLOAD_DIR } from "../terminal/constants.js";
+import { claudeConfigDir, claudeStateFile } from "./claudeProfile.js";
 import { findTranscript, CLAUDE_SESSION_ID_RE, claudeRecordParser, replayClaudeLines, liveTranscript } from "./claudeTranscript.js";
 import { stageAttachment, buildAttachedPrompt, type AttachmentInput } from "./aiAttachment.js";
 import { AI_ENGINES, CLAUDE_QUEUE_CONFIRM_MS, CLAUDE_TERMINAL_POLL_MS, CLAUDE_TERMINAL_BOOT_MS, CLAUDE_TERMINAL_SETTLE_MS, CLAUDE_TERMINAL_ENTER_MS, CLAUDE_QUESTION_WAIT_MS, CLAUDE_SHELL_TAIL_BYTES, CLAUDE_SHELL_TAIL_LINES } from "./constants.js";
@@ -33,9 +33,8 @@ const READ_CHUNK = 1 << 20;
 const ARROW_DOWN = "\x1b[B";
 
 // Claude Code's folder trust, as its config records it; a trusted ancestor covers the folder too.
-function isTrustedFolder(cwd: string): boolean {
-  const configDir = process.env.CLAUDE_CONFIG_DIR;
-  const file = configDir ? path.join(configDir, ".claude.json") : path.join(os.homedir(), ".claude.json");
+function isTrustedFolder(cwd: string, launcher: string = ""): boolean {
+  const file = claudeStateFile(claudeConfigDir(launcher));
   let projects: Record<string, { hasTrustDialogAccepted?: boolean }>;
   try { projects = JSON.parse(fs.readFileSync(file, "utf8")).projects || {}; } catch { return false; }
   for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
@@ -193,7 +192,7 @@ export class ClaudeTerminal {
     daemonClient.sendInput(s.id, `${CLEAR_LINE}${this.launchLine(fresh)}\r`);
     logger.info(`session ${s.id}: TUI ${fresh ? "start" : "resume"} ${s.cliSessionId}`);
     if (!await this.settle(() => this.tuiRunning())) throw new Error("Claude Code did not start in this terminal");
-    if (!isTrustedFolder(s.cwd)) await this.confirmTrust();
+    if (!isTrustedFolder(s.cwd, s.options.launcher)) await this.confirmTrust();
     // The process is up before its input box is drawn; keys typed earlier are lost.
     await this.settle(async () => true);
   }

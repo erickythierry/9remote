@@ -8,6 +8,7 @@ import { HISTORY } from "./constants.js";
 import { createRequire } from "module";
 import { writeJsonAtomic } from "../../lib/atomicFile.js";
 import { agentById } from "./agentCatalog.js";
+import { claudeProjectsDirs, profileOfTranscript, resumeLineForProfile } from "../ai/claudeProfile.js";
 import { getConversationMode, engineFromAgent, type ConversationMode } from "./conversationModes.js";
 import { parseWorktreeList } from "../fileExplorer/gitRepoScan.js";
 import { findGitRoot } from "./workspaceMigration.js";
@@ -50,11 +51,13 @@ type SessionRow = {
 };
 type LiveTerminal = { sessionId: string; conversationId?: string; agent?: string; prompt?: string; cwd?: string | null; startedAt?: number | null };
 type HistorySource = {
-  id: string; layout: Layout; root: () => string; encode?: (cwd: string) => string; sub?: string;
+  id: string; layout: Layout; root: () => string; roots?: () => string[]; encode?: (cwd: string) => string; sub?: string;
   depth?: number; ext?: string; file?: string; parse?: (filePath: string) => RawSession | null;
 };
 
 const home = () => os.homedir();
+// A source with several profiles (claude) lists them all; the rest have the one root.
+const rootsOf = (source: HistorySource): string[] => (source.roots ? source.roots() : [source.root()]);
 
 const WRAPPER_PATTERNS = [
   /<environment_context>[\s\S]*?<\/environment_context>/g,
@@ -453,7 +456,7 @@ function parseOmp(filePath: string) {
 }
 
 const HISTORY_SOURCES: HistorySource[] = [
-  { id: "claude", layout: "cwdDir", root: () => path.join(home(), ".claude", "projects"), encode: dashEncode, ext: ".jsonl", parse: parseClaude },
+  { id: "claude", layout: "cwdDir", root: () => path.join(home(), ".claude", "projects"), roots: () => claudeProjectsDirs(), encode: dashEncode, ext: ".jsonl", parse: parseClaude },
   { id: "codex", layout: "scan", root: () => path.join(process.env.CODEX_HOME?.trim() || path.join(home(), ".codex"), "sessions"), ext: ".jsonl", parse: parseCodex },
   { id: "opencode", layout: "opencode", root: () => path.join(home(), ".local", "share", "opencode", "storage", "session"), ext: ".json", parse: parseOpencode },
   { id: "qwen-code", layout: "cwdDir", root: () => path.join(home(), ".qwen", "tmp"), encode: sha256, sub: "chats", ext: ".json", parse: parseCwdChats },
@@ -477,6 +480,13 @@ export function encodeCwdForAgent(agentId: string, cwd: string) {
   const source = SOURCE_BY_ID.get(agentId);
   if (!source?.encode) return null;
   return source.encode(cwd);
+}
+
+// A claude session found in another profile must resume under that profile, or the CLI says "No conversation found".
+function resumeFor(source: HistorySource, sessionId: string, filePath?: string): string | null {
+  const line = resumeCommand(source.id, sessionId);
+  if (!line || source.id !== "claude" || !filePath) return line;
+  return resumeLineForProfile(line, profileOfTranscript(filePath));
 }
 
 const SHELL_SAFE_RE = /^[A-Za-z0-9._\-/]+$/;
@@ -559,12 +569,14 @@ function filesUnder(dir: string, depth: number, ext: string | undefined, fileNam
 }
 
 function collectCwdDir(source: HistorySource, cwd: string, limit: number): SessionRow[] {
-  const base = path.join(source.root(), source.encode?.(cwd) ?? "", source.sub || "");
   const rows = [];
-  for (const filePath of filesUnder(base, source.depth || 0, source.ext, source.file)) {
-    const parsed = source.parse?.(filePath);
-    if (!parsed?.sessionId) continue;
-    rows.push({ ...parsed, filePath });
+  for (const root of rootsOf(source)) {
+    const base = path.join(root, source.encode?.(cwd) ?? "", source.sub || "");
+    for (const filePath of filesUnder(base, source.depth || 0, source.ext, source.file)) {
+      const parsed = source.parse?.(filePath);
+      if (!parsed?.sessionId) continue;
+      rows.push({ ...parsed, filePath });
+    }
   }
   return byNewest(rows, source, cwd).slice(0, limit);
 }
@@ -679,7 +691,7 @@ function byNewest(rows: RawSession[], source: HistorySource, cwd: string): Sessi
       cwd: row.cwd || cwd,
       updatedAt: row.updatedAt || mtimeMs(row.filePath ?? ""),
       size: row.size ?? (row.filePath ? fileSizeBytes(row.filePath) : 0),
-      resume: resumeCommand(source.id, row.sessionId),
+      resume: resumeFor(source, row.sessionId, row.filePath),
       filePath: row.filePath
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -894,8 +906,10 @@ export async function searchAgentSessions({ query, limit = HISTORY.SEARCH_LIMIT 
   for (const source of HISTORY_SOURCES) {
     const depth = SEARCH_FILE_DEPTH[source.layout];
     if (depth === undefined) continue;
-    for (const filePath of filesUnder(source.root(), depth, source.ext, source.file)) {
-      files.push({ filePath, source, mtime: mtimeMs(filePath) });
+    for (const root of rootsOf(source)) {
+      for (const filePath of filesUnder(root, depth, source.ext, source.file)) {
+        files.push({ filePath, source, mtime: mtimeMs(filePath) });
+      }
     }
   }
   files.sort((a, b) => b.mtime - a.mtime);
@@ -927,7 +941,7 @@ export async function searchAgentSessions({ query, limit = HISTORY.SEARCH_LIMIT 
       cwd,
       updatedAt: mtimeMs(filePath),
       size: fileSizeBytes(filePath),
-      resume: resumeCommand(source.id, sessionId),
+      resume: resumeFor(source, sessionId, filePath),
       filePath
     });
   }
@@ -988,34 +1002,31 @@ export async function deleteAgentSession({ agent, sessionId, cwd }: { agent?: st
   const cachedRow = cached?.rows?.find((r) => r.agent === agent && r.sessionId === sessionId);
   let filePath = cachedRow?.filePath;
 
-  const rootDir = source.root();
-  if (!filePath) {
+  const isInside = (target: string, root: string) => target === root || target.startsWith(root + path.sep);
+  const roots = rootsOf(source);
+  const locate = (root: string): string | undefined => {
     if (source.layout === "cwdDir" && cwd && source.encode) {
-      const base = path.join(rootDir, source.encode(cwd), source.sub || "");
-      if (source.file) {
-        filePath = path.join(base, sessionId, source.file);
-      } else {
-        filePath = path.join(base, `${sessionId}${source.ext}`);
-      }
-    } else if (source.layout === "opencode") {
-      filePath = path.join(rootDir, `${sessionId}${source.ext}`);
-    } else if (source.layout === "scan") {
-      const direct = path.join(rootDir, `${sessionId}${source.ext}`);
-      if (fs.existsSync(direct)) {
-        filePath = direct;
-      } else {
-        const files = filesUnder(rootDir, HISTORY.SCAN_DEPTH, source.ext, source.file);
-        for (const f of files) {
-          if (source.parse?.(f)?.sessionId === sessionId) {
-            filePath = f;
-            break;
-          }
-        }
-      }
+      const base = path.join(root, source.encode(cwd), source.sub || "");
+      return source.file ? path.join(base, sessionId, source.file) : path.join(base, `${sessionId}${source.ext}`);
     }
+    if (source.layout === "opencode") return path.join(root, `${sessionId}${source.ext}`);
+    if (source.layout !== "scan") return undefined;
+    const direct = path.join(root, `${sessionId}${source.ext}`);
+    if (fs.existsSync(direct)) return direct;
+    return filesUnder(root, HISTORY.SCAN_DEPTH, source.ext, source.file).find((f) => source.parse?.(f)?.sessionId === sessionId);
+  };
+  let rootDir = roots[0];
+  if (filePath) {
+    const resolved = path.resolve(filePath);
+    rootDir = roots.find((r) => isInside(resolved, path.resolve(r))) ?? rootDir;
+  } else {
+    for (const root of roots) {
+      const candidate = locate(root);
+      if (candidate && fs.existsSync(candidate)) { filePath = candidate; rootDir = root; break; }
+    }
+    if (!filePath) filePath = locate(roots[0]);
   }
 
-  const isInside = (target: string, root: string) => target === root || target.startsWith(root + path.sep);
   if (filePath && fs.existsSync(filePath)) {
     const resolvedPath = path.resolve(filePath);
     const resolvedRoot = path.resolve(rootDir);

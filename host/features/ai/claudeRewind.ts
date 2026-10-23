@@ -19,13 +19,13 @@
 // stays ONE file, and it works from a process started with `--resume`.
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { CLAUDE_SESSION_ID_RE, isTypedTurn, textOf, liveTranscript } from "./claudeTranscript.js";
+import { claudeProjectsDirs } from "./claudeProfile.js";
 
 // Overridable so a test can point at its own projects tree: the real one is the user's
 // whole chat history, and a lookup scans every project directory for the id.
-const projectsDir = () => process.env.NREMOTE_CLAUDE_PROJECTS_DIR || path.join(os.homedir(), ".claude", "projects");
+const projectsDirs = () => process.env.NREMOTE_CLAUDE_PROJECTS_DIR ? [process.env.NREMOTE_CLAUDE_PROJECTS_DIR] : claudeProjectsDirs();
 
 export interface ClaudeRewindPoint {
   messageId: string;
@@ -37,19 +37,20 @@ export interface ClaudeRewindPoint {
  * The session's transcript file, found by id rather than by cwd: the CLI records it
  * under the directory it was STARTED in, and the terminal may have cd'd away since.
  *
- * `projectsDir()` is overridable (see above) so a test can point at its own tree; the
+ * `projectsDirs()` is overridable (see above) so a test can point at its own tree; the
  * path confinement the other reader does is not repeated here because this one is only
  * ever handed a uuid already validated by CLAUDE_SESSION_ID_RE, and it never joins a
  * caller-supplied directory into the path.
  */
 export function findTranscript(cliSessionId?: string | null): string | null {
   if (!cliSessionId || !CLAUDE_SESSION_ID_RE.test(cliSessionId)) return null;
-  const root = projectsDir();
-  let entries: string[];
-  try { entries = fs.readdirSync(root); } catch { return null; }
-  for (const entry of entries) {
-    const candidate = path.join(root, entry, `${cliSessionId}.jsonl`);
-    if (fs.existsSync(candidate)) return candidate;
+  for (const root of projectsDirs()) {
+    let entries: string[];
+    try { entries = fs.readdirSync(root); } catch { continue; }
+    for (const entry of entries) {
+      const candidate = path.join(root, entry, `${cliSessionId}.jsonl`);
+      if (fs.existsSync(candidate)) return candidate;
+    }
   }
   return null;
 }
