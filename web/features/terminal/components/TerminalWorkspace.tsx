@@ -231,7 +231,7 @@ function TerminalWorkspace({
   // workspacePath of the focused terminal (a workspace migrated from a group has no path),
   // else the folder it was opened in — a new terminal outside any workspace has no workspacePath yet.
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
-  const baseRoot: string | null = activeWorkspace?.path || activeSession?.workspacePath || activeSession?.cwd || null;
+  const baseRoot: string | null = activeWorkspace?.path || activeSession?.workspacePath || activeSession?.cwd || (activeSessionId ? cwdBySession[activeSessionId] : null) || null;
   // A pane's folder button reveals its live cwd into the files tab only — git/worktrees
   // tabs keep the workspace root, so a deep cwd must not blank their repo scan.
   const rightPanelRoots = useTerminalStore((s) => s.rightPanelRoots);

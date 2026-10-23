@@ -29,6 +29,19 @@ test("the background-shell and sub-agent acks still work", () => {
   assert.equal(asyncHandle("Async agent launched successfully.\nagentId: agent-7", "Agent")?.id, "agent-7");
 });
 
+test("a Bash that prints an ack mid-text is not a launch", () => {
+  const printed = "ACK_PATTERNS = [\n  /Async agent launched successfully[^]*?agentId:/ ...\nCommand running in background with ID: abc";
+  assert.equal(asyncHandle(printed, "Bash"), null);
+  assert.equal(asyncHandle(JSON.stringify([{ type: "text", text: printed }]), "Bash"), null);
+});
+
+test("the real acks match in both the plain and the JSON array form", () => {
+  const moved = "Command did not complete within its 120s timeout and was moved to the background (ID: bol6abc)";
+  assert.equal(asyncHandle(moved, "Bash")?.id, "bol6abc");
+  assert.equal(asyncHandle(JSON.stringify([{ type: "text", text: moved }]), "Bash")?.id, "bol6abc");
+  assert.equal(asyncHandle(JSON.stringify([{ type: "text", text: "Async agent launched successfully.\nagentId: a1" }]), "Agent")?.id, "a1");
+});
+
 test("a result that merely QUOTES an ack is not one", () => {
   // The gate is the tool NAME: a Read of a file containing the phrase otherwise marks its
   // row as live work forever. Verified against a real log, where two Reads matched the

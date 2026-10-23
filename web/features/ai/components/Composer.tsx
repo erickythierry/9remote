@@ -794,7 +794,7 @@ export const Composer = memo(function Composer({
                 )}
               </div>
               <div className="flex items-center gap-1 shrink-0 ml-2">
-                {idx === 0 && (
+                {idx === 0 && !item.locked && (
                   <button
                     type="button"
                     onClick={() => {
@@ -807,14 +807,16 @@ export const Composer = memo(function Composer({
                     <Send size={13} />
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => { vibrate(); onRemoveQueueItem?.(item.id); }}
-                  className="text-text-muted hover:text-text p-1 rounded hover:bg-surface-2 transition-colors cursor-pointer"
-                  title="Remove from queue"
-                >
-                  <X size={14} />
-                </button>
+                {!item.locked && (
+                  <button
+                    type="button"
+                    onClick={() => { vibrate(); onRemoveQueueItem?.(item.id); }}
+                    className="text-text-muted hover:text-text p-1 rounded hover:bg-surface-2 transition-colors cursor-pointer"
+                    title="Remove from queue"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             </div>
           ))}

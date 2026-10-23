@@ -13,9 +13,9 @@ import { CLEAR_LINE } from "../terminal/sessionMode.js";
 import { UPLOAD_DIR } from "../terminal/constants.js";
 import { findTranscript, CLAUDE_SESSION_ID_RE, claudeRecordParser, replayClaudeLines, liveTranscript } from "./claudeTranscript.js";
 import { stageAttachment, buildAttachedPrompt, type AttachmentInput } from "./aiAttachment.js";
-import { AI_ENGINES, CLAUDE_TERMINAL_POLL_MS, CLAUDE_TERMINAL_BOOT_MS, CLAUDE_TERMINAL_SETTLE_MS, CLAUDE_TERMINAL_ENTER_MS, CLAUDE_SHELL_TAIL_BYTES, CLAUDE_SHELL_TAIL_LINES } from "./constants.js";
+import { AI_ENGINES, CLAUDE_QUEUE_CONFIRM_MS, CLAUDE_TERMINAL_POLL_MS, CLAUDE_TERMINAL_BOOT_MS, CLAUDE_TERMINAL_SETTLE_MS, CLAUDE_TERMINAL_ENTER_MS, CLAUDE_SHELL_TAIL_BYTES, CLAUDE_SHELL_TAIL_LINES } from "./constants.js";
 import { createLogger } from "../../lib/logger.js";
-import type { AiSession } from "./aiSession.js";
+import type { AiSession, PromptQueueItem } from "./aiSession.js";
 
 const logger = createLogger("claudeTerminal");
 const WAIT_STEP_MS = 100;
@@ -99,6 +99,10 @@ export class ClaudeTerminal {
   muted = false;
   // Prompts the chat typed, already drawn by the session; their transcript echo is skipped once.
   echoes: string[] = [];
+  // What the TUI holds in its prompt queue, folded from the transcript's queue-operation records.
+  // Hidden entries (task notifications) take part in the FIFO but are never shown.
+  queued: { id: string; text: string; key: string; hidden: boolean }[] = [];
+  queueSeq = 0;
   // Sub-agent transcripts by file, each nested under the Task call that spawned it.
   agents = new Map<string, Tail>();
   // Background shells still running, by tool id: their output file is tailed into the row.
@@ -193,13 +197,58 @@ export class ClaudeTerminal {
     return [cmd, fresh ? `--session-id ${s.cliSessionId}` : `--resume ${s.cliSessionId}`, perm, model, effort].filter(Boolean).join(" ");
   }
 
-  async send(prompt: string, attachments: AttachmentInput[] | null) {
+  async send(prompt: string, attachments: AttachmentInput[] | null, queued: PromptQueueItem | null = null) {
     // A running TUI takes typed input mid-turn and queues it itself.
     await this.ensureTui();
     const staged = (attachments || []).map(stageAttachment);
     const text = buildAttachedPrompt(prompt, staged, true);
-    this.echoes.push(echoKey(text));
+    // A queued prompt is drawn when the TUI takes it, so its transcript echo is not one to skip.
+    if (queued) queued.key = echoKey(text);
+    else this.echoes.push(echoKey(text));
     await this.type(text);
+  }
+
+  // The TUI's queue is FIFO: enqueue appends, dequeue takes the head, remove names one, popAll empties it.
+  queueRecord(d: any) {
+    if (d.type !== "queue-operation") return;
+    const text = typeof d.content === "string" ? d.content : "";
+    const key = echoKey(text);
+    switch (d.operation) {
+      case "enqueue":
+        this.queued.push({ id: `tq-${++this.queueSeq}`, text, key, hidden: !key || text.includes("<task-notification>") });
+        return;
+      case "dequeue":
+        this.queued.shift();
+        return;
+      case "popAll":
+        this.queued = [];
+        return;
+      case "remove": {
+        const at = this.queued.findIndex((q) => q.key === key);
+        if (at === -1) return;
+        this.queued.splice(at, 1);
+      }
+    }
+  }
+
+  // The chat's queue is the TUI's, plus what the chat typed that the transcript has not shown yet.
+  syncQueue() {
+    const s = this.session;
+    const mine = s.promptQueue.filter((i) => i.tui);
+    const used = new Set<string>();
+    const shown = this.queued.filter((q) => !q.hidden).map((q): PromptQueueItem => {
+      const hit = mine.find((i) => !used.has(i.id) && i.key === q.key);
+      if (!hit) return { id: q.id, text: q.text, key: q.key, tui: true, seen: true };
+      used.add(hit.id);
+      hit.seen = true;
+      return hit;
+    });
+    const waiting = mine.filter((i) => !i.seen && Date.now() - (i.at || 0) < CLAUDE_QUEUE_CONFIRM_MS);
+    const next = [...shown, ...waiting];
+    const sig = (list: PromptQueueItem[]) => list.map((i) => i.id).join("|");
+    if (sig(next) === sig(s.promptQueue)) return;
+    s.promptQueue = next;
+    s.emitQueueUpdate();
   }
 
   async type(text: string) {
@@ -330,8 +379,12 @@ export class ClaudeTerminal {
       s.emitNormalized(ev.event, ev.data);
     });
     this.muted = true;
-    replayClaudeLines(lines, live, (d) => this.parse!(d, false));
+    this.queued = [];
+    replayClaudeLines(lines, live, (d) => { this.queueRecord(d); this.parse!(d, false); });
     this.muted = false;
+    // A queue left over from a TUI that died mid-turn would never drain.
+    if (!s.isTurnRunning && getStatus(s.id)?.state !== "working") this.queued = [];
+    this.syncQueue();
     try { this.offset = fs.statSync(this.file!).size; } catch { this.offset = 0; }
   }
 
@@ -343,7 +396,8 @@ export class ClaudeTerminal {
     this.offset = tail.offset;
     this.partial = tail.partial;
     // The Stop hook ends the turn (aiManager's done releaser): one assistant record is only one step of it.
-    replayClaudeLines(lines, null, (d) => this.parse!(d, false));
+    replayClaudeLines(lines, null, (d) => { this.queueRecord(d); this.parse!(d, false); });
+    this.syncQueue();
   }
 
   // The card is the existing permission_request one; its answer goes back through resolveQuestion.

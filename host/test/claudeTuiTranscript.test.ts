@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { claudeRecordParser } from "../features/ai/claudeTranscript.js";
-import { echoKey } from "../features/ai/claudeTerminal.js";
+import { echoKey, ClaudeTerminal } from "../features/ai/claudeTerminal.js";
 import { UPLOAD_DIR } from "../features/terminal/constants.js";
 
 const collect = (records: any[]) => {
@@ -39,4 +39,28 @@ test("a stop_hook_summary reaches the pane without the hook command lines", () =
   assert.equal(ev.data.record.hookCount, 2);
   assert.deepEqual(ev.data.record.hookDurationsMs, [18, 9000]);
   assert.ok(!JSON.stringify(ev).includes("SECRET"));
+});
+
+test("a prompt absorbed mid-turn draws its bubble from the queue removal", () => {
+  const evs = collect([
+    { type: "queue-operation", operation: "enqueue", content: "do the build" },
+    { type: "queue-operation", operation: "remove", content: "do the build", reason: "absorbed_mid_turn" },
+    { type: "queue-operation", operation: "remove", content: "<task-notification>\n<task-id>x</task-id>\n</task-notification>", reason: "absorbed_mid_turn" }
+  ]);
+  const bubbles = evs.filter((e) => e.event === "user_message");
+  assert.equal(bubbles.length, 1);
+  assert.equal(bubbles[0].data.text, "do the build");
+});
+
+test("the TUI's queue is mirrored: enqueue, dequeue, remove and popAll", () => {
+  const term: any = new (ClaudeTerminal as any)({});
+  const op = (operation: string, content = "", reason?: string) => term.queueRecord({ type: "queue-operation", operation, content, reason });
+  op("enqueue", "one"); op("enqueue", "two"); op("enqueue", "<task-notification>x</task-notification>");
+  assert.deepEqual(term.queued.filter((q: any) => !q.hidden).map((q: any) => q.text), ["one", "two"]);
+  op("dequeue");
+  assert.deepEqual(term.queued.map((q: any) => q.text.slice(0, 3)), ["two", "<ta"]);
+  op("remove", "two", "absorbed_mid_turn");
+  assert.equal(term.queued.length, 1);
+  op("popAll");
+  assert.equal(term.queued.length, 0);
 });

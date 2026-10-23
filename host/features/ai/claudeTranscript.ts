@@ -216,6 +216,10 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
       // A notification queued mid-turn is removed at the turn's end, never re-delivered as a user record — this is its only door.
       const task = taskNotificationFrom(d);
       if (task) pushTaskNotification(task);
+      // A prompt typed mid-turn is folded into it: no `user` record is ever written, so the removal is its only trace.
+      else if (d.operation === "remove" && d.reason === "absorbed_mid_turn" && typeof d.content === "string" && d.content.trim() && !isInjectedTurn(d.content)) {
+        push({ event: "user_message", data: { text: d.content } });
+      }
     } else if (d.type === "system") {
       // Carried whole under its own name — the pane (noticeFrom) decides what to show.
       push({

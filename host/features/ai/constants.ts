@@ -118,6 +118,8 @@ export const CLAUDE_TERMINAL_BOOT_MS = 20000;
 export const CLAUDE_TERMINAL_SETTLE_MS = 800;
 // Gap between the typed text and Enter, so the TUI's autocomplete has the whole line.
 export const CLAUDE_TERMINAL_ENTER_MS = 150;
+// A prompt the chat queued waits this long for the TUI's own enqueue record before the chat stops showing it.
+export const CLAUDE_QUEUE_CONFIRM_MS = 8000;
 // Live tail of a background shell's output file, drawn in its running row.
 export const CLAUDE_SHELL_TAIL_BYTES = 16 * 1024;
 export const CLAUDE_SHELL_TAIL_LINES = 200;

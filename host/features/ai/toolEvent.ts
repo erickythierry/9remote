@@ -96,16 +96,21 @@ export function toolResult({ id, name, output = "", error = "", parentToolUseId 
 // No `\b` before the key: the result reaches this as JSON, so a real newline arrives as
 // the two characters `\` and `n` — and `n` is a word character, which kills the boundary
 // the anchor needed. The escaped form is the ONLY form seen in practice.
+// Anchored: a real ack IS the result's opening words, while a Bash that merely prints one
+// (cat of this very file, a transcript dump) quotes it mid-text and must not become live work.
 const ACK_PATTERNS = [
-  /Async agent launched successfully[^]*?agentId:\s*([A-Za-z0-9_-]+)/i,
-  /Command running in background with ID:\s*([A-Za-z0-9_-]+)/i,
-  // A foreground Bash past its timeout: "...was moved to the background (ID: b6qj92wg4)".
-  /moved to the background \(ID:\s*([A-Za-z0-9_-]+)\)/i,
+  /^Async agent launched successfully[^]*?agentId:\s*([A-Za-z0-9_-]+)/i,
+  /^Command running in background with ID:\s*([A-Za-z0-9_-]+)/i,
+  // A foreground Bash past its timeout: "Command did not complete within its 120s timeout and was moved to the background (ID: b6qj92wg4)".
+  /^Command did not complete[^]{0,200}?moved to the background \(ID:\s*([A-Za-z0-9_-]+)\)/i,
   // `Monitor` watches a command and returns at once: "Monitor started (task b301ffx4j,
   // timeout 600000ms). You will be notified on each event." Measured on this machine: 44
   // of these, every one closing its row immediately while the task it named kept running.
-  /Monitor started \(task\s+([A-Za-z0-9_-]+)/i,
+  /^Monitor started \(task\s+([A-Za-z0-9_-]+)/i,
 ];
+
+// Array-form results reach asyncHandle JSON-serialized; the text block's own wrapper is not part of the ack.
+const JSON_TEXT_PREFIX = /^\[\{"type":"text","text":"/;
 
 // Only these can hand work off and return early. The gate is the tool NAME, not the
 // output alone: a result that merely CONTAINS an ack — a Read of a file that quotes one —
@@ -176,7 +181,7 @@ export interface AsyncHandleResult {
 /** The handle an async launch ack names, or null when this result is an ordinary one. */
 export function asyncHandle(output: string = "", name: string = ""): AsyncHandleResult | null {
   if (!LAUNCHER_TOOLS.has(name)) return null;
-  const text = typeof output === "string" ? output : "";
+  const text = (typeof output === "string" ? output : "").replace(JSON_TEXT_PREFIX, "").trimStart();
   if (!text) return null;
   for (const re of ACK_PATTERNS) {
     const m = re.exec(text);

@@ -273,6 +273,11 @@ export interface PromptQueueItem {
   id: string;
   text: string;
   attachments?: any;
+  // Held by the Claude TUI itself: mirrored from its transcript, so the chat cannot remove it.
+  tui?: boolean;
+  key?: string;
+  seen?: boolean;
+  at?: number;
 }
 
 export class AiSession {
@@ -894,7 +899,7 @@ export class AiSession {
 
       // Queued prompts waiting: fold one into the RUNNING turn between LLM requests
       // — no interrupt, the agent just sees it on its next request.
-      if (!data?.async && !data?.parentToolUseId && this.promptQueue?.length > 0 && !this._stoppingForQueue) {
+      if (!this.terminal && !data?.async && !data?.parentToolUseId && this.promptQueue?.length > 0 && !this._stoppingForQueue) {
         if (typeof this.adapter?.injectPrompt === "function") {
           this._injectQueuedPrompt();
         } else {
@@ -944,6 +949,8 @@ export class AiSession {
   }
 
   _drainQueue() {
+    // The TUI drains its own queue; re-sending these would type them twice.
+    if (this.terminal) return;
     if (this.isTurnRunning || !this.promptQueue?.length || this.destroyed) return;
     if (this._drainTimer) clearTimeout(this._drainTimer);
     this._drainTimer = setTimeout(() => {
@@ -961,6 +968,7 @@ export class AiSession {
     return this.promptQueue.map((item) => ({
       id: item.id,
       text: item.text,
+      ...(item.tui ? { locked: true } : null),
       attachments: (item.attachments || []).map((a: any) => ({ name: a.name || a.filename, type: a.type }))
     }));
   }
@@ -970,7 +978,7 @@ export class AiSession {
   }
 
   removeQueueItem(id: string) {
-    if (!Array.isArray(this.promptQueue)) return false;
+    if (this.terminal || !Array.isArray(this.promptQueue)) return false;
     const before = this.promptQueue.length;
     this.promptQueue = this.promptQueue.filter((item) => item.id !== id);
     if (this.promptQueue.length !== before) {
@@ -981,6 +989,7 @@ export class AiSession {
   }
 
   clearQueue() {
+    if (this.terminal) return;
     if (this._drainTimer) { clearTimeout(this._drainTimer); this._drainTimer = null; }
     if (!this.promptQueue?.length) return;
     this.promptQueue = [];
@@ -1007,6 +1016,8 @@ export class AiSession {
     }
     this.attachmentOffset = read.offset;
     for (const record of read.records) {
+      // The terminal chat draws a taken prompt as its own bubble (see ClaudeTerminal.queueRecord).
+      if (this.terminal && record.attachment?.type === "queued_command") continue;
       this.emitNormalized("cli_event", {
         type: "attachment",
         subtype: record.attachment?.type || "",
@@ -1420,12 +1431,22 @@ export class AiSession {
   _sendToTerminal(prompt: string, attachments: any) {
     const terminal = this.terminal!;
     this.lastPrompt = prompt;
-    if (!this.isTurnRunning) {
+    // Typed mid-turn, the TUI queues it: the bubble is drawn when the TUI takes it, not now.
+    let item: PromptQueueItem | null = null;
+    if (this.isTurnRunning) {
+      item = { id: `q-${Date.now()}-${++queueIdSeq}`, text: prompt, attachments, tui: true, at: Date.now() };
+      this.promptQueue.push(item);
+      this.emitQueueUpdate();
+    } else {
       this.isTurnRunning = true;
       this.turnStartedAt = Date.now();
+      this.emitNormalized("user_message", { text: prompt, attachments: attachmentMeta(attachments) });
     }
-    this.emitNormalized("user_message", { text: prompt, attachments: attachmentMeta(attachments) });
-    terminal.send(prompt, attachments).catch((err: any) => {
+    terminal.send(prompt, attachments, item).catch((err: any) => {
+      if (item) {
+        this.promptQueue = this.promptQueue.filter((i) => i !== item);
+        this.emitQueueUpdate();
+      }
       this.emitNormalized("prompt_refused", { text: prompt, reason: String(err?.message || err) });
     });
   }

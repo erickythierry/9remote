@@ -74,7 +74,7 @@ export const ARTIFACT_STACK_MAX = 20;
 export const WORKSPACE_GIT_POLL_MS = 10000;
 export const WORKSPACE_GIT_FETCH_MS = 120000;
 // Nested-repo scan depth; scans 4 levels by default for submodules and monorepo packages.
-export const REPO_SCAN = { maxDepth: 4, deepMaxDepth: 6, cacheTtlMs: 30000 };
+export const REPO_SCAN = { maxDepth: 4, deepMaxDepth: 6, cacheTtlMs: 30000, retries: 4, retryMs: 1500 };
 
 export const HISTORY_FETCH = {
   topThresholdLines: 5,
