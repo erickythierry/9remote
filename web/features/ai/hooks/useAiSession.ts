@@ -805,6 +805,10 @@ export function useAiSession({
         if (Array.isArray(res?.modelOptions) && res.modelOptions.length > 0) {
           useAiStore.getState().setMetadata(sessionId, { modelOptions: res.modelOptions });
         }
+        // The recorded init keeps the MCP list from creation; the ack has the current one.
+        if (Array.isArray(res?.mcpServers)) {
+          useAiStore.getState().setMetadata(sessionId, { mcpServers: res.mcpServers });
+        }
         if (events.length > 0) {
           // Pure in-memory reduction in <3ms instead of 5000+ synchronous store dispatches
           const hydrated = reduceSessionEvents(events, engine);
@@ -819,6 +823,7 @@ export function useAiSession({
               ...useAiStore.getState().bySession[sessionId]?.metadata,
               ...hydrated.metadata,
               ...(Array.isArray(res?.modelOptions) ? { modelOptions: res.modelOptions } : {}),
+              ...(Array.isArray(res?.mcpServers) ? { mcpServers: res.mcpServers } : {}),
               ...(res.session.effort ? { effort: res.session.effort } : {})
             },
             // The host's counters outrank the replay's: the log holds events, not the

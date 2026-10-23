@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { Package, CheckCircle2 } from "@/shared/components/ui/Icon";
+import { Package, CheckCircle2, AlertCircle } from "@/shared/components/ui/Icon";
 import { ModalShell } from "./ModalShell";
 
 export interface McpServerItem {
@@ -36,11 +36,15 @@ export const McpModal = memo(function McpModal({
             <span className="text-sm">No MCP servers configured yet.</span>
           </div>
         ) : (
-          mcpServers.map((srv: McpServerItem, idx: number) => (
+          mcpServers.map((srv: McpServerItem, idx: number) => {
+            const needsAuth = srv.status === "needs-auth";
+            return (
             <div key={srv.id || idx} className="modal-row">
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-semibold text-text flex items-center gap-2">
-                  <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                  {needsAuth
+                    ? <AlertCircle size={13} className="text-amber-400 shrink-0" />
+                    : <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />}
                   <span className="font-mono">{srv.name || srv.id}</span>
                 </div>
                 {srv.command && (
@@ -52,11 +56,16 @@ export const McpModal = memo(function McpModal({
                 )}
               </div>
 
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 uppercase shrink-0 ml-2">
-                {srv.status || "active"}
+              <span className={`px-2 py-0.5 rounded text-[10px] font-mono border uppercase shrink-0 ml-2 ${
+                needsAuth
+                  ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                  : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+              }`}>
+                {needsAuth ? "needs authentication" : srv.status || "active"}
               </span>
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </ModalShell>

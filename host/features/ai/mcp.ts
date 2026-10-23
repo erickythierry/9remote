@@ -112,7 +112,22 @@ function claudeServers(cwd: string = process.cwd()): McpServerItem[] {
       add(name, cfg, `plugin:${plugin}:${name}`);
     }
   }
-  return [...out.values()];
+  const needsAuth = needsAuthIds(home);
+  return [...out.values()].map((s) => (needsAuth.has(s.id) ? { ...s, status: "needs-auth" } : s));
+}
+
+// shortcut: the CLI's own default lifetime for an entry without ttlMs, assumed from its binary; revisit if the TUI and this list disagree.
+const NEEDS_AUTH_DEFAULT_TTL_MS = 15 * 60 * 1000;
+
+/** Servers the CLI flagged as unauthenticated: live entries of its needs-auth cache. */
+function needsAuthIds(home: string): Set<string> {
+  const cache = readJson(path.join(home, ".claude", "mcp-needs-auth-cache.json")) || {};
+  const now = Date.now();
+  return new Set(
+    Object.entries<any>(cache)
+      .filter(([, e]) => now - e?.timestamp < (e?.ttlMs ?? NEEDS_AUTH_DEFAULT_TTL_MS))
+      .map(([id]) => id)
+  );
 }
 
 /**

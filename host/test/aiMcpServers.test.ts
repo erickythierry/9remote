@@ -162,3 +162,16 @@ test("the module read the sandbox home, not the real one", () => {
 fs.rmSync(sandbox, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
+
+test("claude flags a server in the CLI's needs-auth cache until its entry lapses", () => {
+  write(".claude.json", JSON.stringify({ mcpServers: { live: { command: "a" }, lapsed: { command: "b" }, fine: { command: "c" } } }));
+  write(".claude/mcp-needs-auth-cache.json", JSON.stringify({
+    live: { timestamp: Date.now() - 60_000 },
+    lapsed: { timestamp: Date.now() - 60 * 60_000 }
+  }));
+  const by = Object.fromEntries(listMcpServers("claude").map((s) => [s.name, s.status]));
+  assert.equal(by.live, "needs-auth");
+  assert.equal(by.lapsed, "configured");
+  assert.equal(by.fine, "configured");
+  for (const rel of [".claude.json", ".claude/mcp-needs-auth-cache.json"]) fs.rmSync(path.join(sandbox, rel), { force: true });
+});
