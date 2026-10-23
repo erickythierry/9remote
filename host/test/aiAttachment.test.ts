@@ -106,3 +106,11 @@ test("the echoed metadata never carries the base64 payload", () => {
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
+
+test("two attachments with the same name and instant get different files", () => {
+  const [a, b] = [1, 2].map((n) => stageAttachment({ filename: "image.png", type: "image/png", content: Buffer.from(`img${n}`).toString("base64") }));
+  assert.notEqual(a.path, b.path);
+  assert.equal(fs.readFileSync(a.path, "utf8"), "img1");
+  assert.equal(fs.readFileSync(b.path, "utf8"), "img2");
+  for (const s of [a, b]) fs.rmSync(s.path, { force: true });
+});

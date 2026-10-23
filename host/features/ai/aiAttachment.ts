@@ -39,8 +39,12 @@ export interface AttachmentMeta {
   isImage: boolean;
 }
 
+// Pasted shots all arrive as "image.png": a bare timestamp prefix collides within one
+// millisecond, so the second attachment overwrote the first and the CLI saw one path twice.
+let stageSeq = 0;
+
 export function stageAttachment({ filename, type, content }: AttachmentInput): StagedAttachment {
-  const filePath = path.join(UPLOAD_DIR, `${Date.now()}_${safeFilename(filename)}`);
+  const filePath = path.join(UPLOAD_DIR, `${Date.now()}-${stageSeq++}_${safeFilename(filename)}`);
   fs.writeFileSync(filePath, Buffer.from(content, "base64"));
   // The path is returned for images too: engines that take an image as a file
   // argument (codex --image, opencode --file) have no other way to name it.
