@@ -14,6 +14,7 @@ import { isDiffPath, parseRepoDiffPath } from "@/features/fileExplorer/constants
 import { useSlideMenuStore } from "@/shared/stores/slideMenuStore";
 import { useNotification } from "@/shared/hooks/useNotification";
 import { updateTitle } from "@/shared/utils/titleMarquee";
+import { installTapClickFix } from "@/shared/utils/tapClickFix";
 import { startWidthDrag } from "@/shared/utils/dragResize";
 import { DESKTOP_BREAKPOINT } from "@/features/terminal/constants/terminalConfig";
 import { usePwaInstallInit } from "@/features/terminal/hooks/usePwaInstallInit";
@@ -209,6 +210,9 @@ export default function WorkspaceLayout({ children }) {
     }
   }, [auth, setAuth]);
 
+  // WebKit-on-macOS drops or misroutes the click of trackpad tap-to-click presses.
+  useEffect(() => installTapClickFix(), []);
+
   // Tauri shell has no browser reload accelerator — wire Cmd/Ctrl+R and F5.
   // Suppress native browser contextmenu in desktop app except for editable text inputs.
   useEffect(() => {
@@ -229,7 +233,7 @@ export default function WorkspaceLayout({ children }) {
       window.removeEventListener("contextmenu", onContextMenu);
     };
   }, []);
-  const { bus, busRef, protocolRef, disconnect, reconnect, connected, connectionMode, carrier, remoteAvailable, mobileAvailable, platform, hostVersion, agentVersion, retryStatus, approvalStatus, admitted, loadSessions, createSession, deleteSession, renameSession, createWorkspace, renameWorkspace, deleteWorkspace, setWorkspaceHiddenRepos, reorderSession } = useAgentBus();
+  const { bus, busRef, protocolRef, disconnect, reconnect, connected, connectionMode, carrier, remoteAvailable, mobileAvailable, platform, hostVersion, agentVersion, retryStatus, approvalStatus, admitted, hostOffline, loadSessions, createSession, deleteSession, renameSession, createWorkspace, renameWorkspace, deleteWorkspace, setWorkspaceHiddenRepos, reorderSession } = useAgentBus();
   // Fleet: one background bus per saved host other than the current one; the
   // mobile home shows the fleet overview until the user enters a host (focus).
   const { loadKeys, saveKey, renameKey, removeKey } = useApiKeyStorage();
@@ -1248,7 +1252,7 @@ export default function WorkspaceLayout({ children }) {
             dead spinner. */}
         {(!connected || !admitted) && !mainHostUpdating && !deliberatelyOff && <ReconnectScreen />}
 
-        {!mainHostUpdating && <ConnectionModal retryStatus={retryStatus} approvalStatus={approvalStatus} connected={connected} suppress={resumeGrace} firstConnect={!everConnected} onLogout={handleDisconnect} onRetryNow={handleRetryNow} />}
+        {!mainHostUpdating && <ConnectionModal retryStatus={retryStatus} approvalStatus={approvalStatus} connected={connected} hostOffline={hostOffline} suppress={resumeGrace} firstConnect={!everConnected} onLogout={handleDisconnect} onRetryNow={handleRetryNow} />}
 
         {/* Global Slide Menu — single instance at page level */}
         <SlideMenu />

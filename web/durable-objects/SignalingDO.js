@@ -115,6 +115,9 @@ export async function handleSignaling(request, env) {
 
 // An agent that last spoke longer ago than this is a sleep/crash corpse — presence must not vouch for it.
 const AGENT_FRESH_MS = 180000;
+// D1 heartbeat freshness (/api/session/heartbeat beats every 120s) — mirrors
+// /api/connect's OFFLINE_GRACE_SEC.
+const AGENT_SEEN_FRESH_MS = 300000;
 
 // Forward-only relay. DO stays dumb about SDP/ICE semantics. One room = one deviceId,
 // two roles (agent + client). WebSocket Hibernation: ping/pong auto-replied by runtime,
@@ -129,11 +132,16 @@ export class SignalingDO extends DurableObject {
     const url = new URL(request.url);
     if (url.pathname === "/presence") {
       const now = Date.now();
-      const live = this.ctx.getWebSockets().some((p) => {
-        const att = p.deserializeAttachment();
-        return att?.role === "agent" && now - (att.aliveAt || 0) < AGENT_FRESH_MS;
-      });
-      return Response.json({ agentPresent: live });
+      const agent = this.ctx.getWebSockets().find((p) => p.deserializeAttachment()?.role === "agent");
+      const att = agent?.deserializeAttachment();
+      if (!att) return Response.json({ agentPresent: false });
+      // WS hb (old hosts) is the fast path; the D1 HTTP heartbeat is the durable one.
+      if (att.aliveAt && now - att.aliveAt < AGENT_FRESH_MS) return Response.json({ agentPresent: true });
+      const apiKey = this.ctx.id?.name;
+      if (!apiKey || !this.env?.DB) return Response.json({ agentPresent: false });
+      const row = await this.env.DB.prepare("SELECT agentSeenAt FROM sessions WHERE apiKey = ?").bind(apiKey).first();
+      const seen = row?.agentSeenAt ? new Date(`${String(row.agentSeenAt).replace(" ", "T")}Z`).getTime() : NaN;
+      return Response.json({ agentPresent: !Number.isNaN(seen) && now - seen < AGENT_SEEN_FRESH_MS });
     }
     const role = url.searchParams.get("role");
     // peerId identifies a specific client (deviceId:tab). Multiple clients share

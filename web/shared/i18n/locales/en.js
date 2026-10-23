@@ -917,6 +917,8 @@ export default {
     backToLogin: "Back to Login",
     failed: "Connection Failed",
     failedDescription: "Unable to connect after {n} attempts",
+    hostOfflineTitle: "Host is Offline",
+    hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
     attemptOf: "Attempt {n} of {total}",
     pairTab: "Paired Device",
     pairScanToSignIn: "Scan to sign in",
