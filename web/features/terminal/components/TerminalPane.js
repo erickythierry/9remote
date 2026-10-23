@@ -245,7 +245,7 @@ function TerminalPane({
   // Workspace-wide count (root repo + nested ones), shared with the git panel so the
   // two badges read one number from one poll. Sessions without a workspace fall back
   // to the live cwd, which is where that pane actually stands.
-  const shownCount = useWorkspaceChangedCount(workspacePath || cwd, fileBus, { enabled: isVisible });
+  const { count: shownCount } = useWorkspaceChangedCount(workspacePath || cwd, fileBus, { enabled: isVisible });
 
   const badgeLabel = shownCount > MAX_CHANGED_BADGE ? `${MAX_CHANGED_BADGE}+` : shownCount;
 
