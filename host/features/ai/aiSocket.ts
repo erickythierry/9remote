@@ -469,11 +469,11 @@ export function setupAiHandlers(socket: any, io: any, manager: AiManager = globa
     }
   });
 
-  socket.on(AI_SOCKET_EVENTS.PERMISSION, async ({ sessionId, requestId, behavior, message }: any, cb: (res: any) => void) => {
+  socket.on(AI_SOCKET_EVENTS.PERMISSION, async ({ sessionId, requestId, behavior, message, updatedInput }: any, cb: (res: any) => void) => {
     try {
       const session = manager.getSession(sessionId);
       if (!session) throw new Error(`AI session not found: ${sessionId}`);
-      if (!session.resolvePermission(requestId, behavior, message)) {
+      if (!session.resolvePermission(requestId, behavior, message, updatedInput)) {
         // Saying stale beats silent ok — the client would drop its card over an answer that reached nobody.
         return cb?.({ ok: false, reason: "stale" });
       }

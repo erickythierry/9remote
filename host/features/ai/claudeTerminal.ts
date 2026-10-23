@@ -11,7 +11,7 @@ import { getConversation, setConversationId, getLastOutputAt, getStatus, getSess
 import { isTuiChatSurface, engineFromAgent } from "../terminal/conversationModes.js";
 import { CLEAR_LINE } from "../terminal/sessionMode.js";
 import { UPLOAD_DIR } from "../terminal/constants.js";
-import { claudeConfigDir, claudeStateFile } from "./claudeProfile.js";
+import { claudeConfigDir, claudeStateFile, trustClaudeFolder } from "./claudeProfile.js";
 import { findTranscript, CLAUDE_SESSION_ID_RE, claudeRecordParser, replayClaudeLines, liveTranscript } from "./claudeTranscript.js";
 import { stageAttachment, buildAttachedPrompt, type AttachmentInput } from "./aiAttachment.js";
 import { AI_ENGINES, CLAUDE_QUEUE_CONFIRM_MS, CLAUDE_TERMINAL_POLL_MS, CLAUDE_TERMINAL_BOOT_MS, CLAUDE_TERMINAL_SETTLE_MS, CLAUDE_TERMINAL_ENTER_MS, CLAUDE_QUESTION_WAIT_MS, CLAUDE_SHELL_TAIL_BYTES, CLAUDE_SHELL_TAIL_LINES } from "./constants.js";
@@ -185,6 +185,8 @@ export class ClaudeTerminal {
     // Typing the launch line into another program (an editor, a pager) would garble it.
     if (!isShellProcess(await this.foreground())) throw new Error("The terminal is busy with another program");
     if (!s.cliSessionId || !CLAUDE_SESSION_ID_RE.test(s.cliSessionId)) s.cliSessionId = randomUUID();
+    // Pre-trust workspace in the target profile's .claude.json so Claude Code never opens a trust dialog in the terminal.
+    trustClaudeFolder(s.cwd, s.options.launcher);
     // No transcript yet means the CLI never wrote this id: it must be created, not resumed.
     const fresh = !findTranscript(s.cwd, s.cliSessionId);
     setConversationId(s.id, AI_ENGINES.CLAUDE, s.cliSessionId, "resume");

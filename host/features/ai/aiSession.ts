@@ -1308,11 +1308,17 @@ export class AiSession {
     return { requestId, tool: req.toolName || "", input: req.input || {} };
   }
 
-  resolvePermission(requestId: string | number, behavior: string, message = "") {
+  resolvePermission(requestId: string | number, behavior: string, message = "", updatedInput?: any) {
     // A skipped question goes back to the TUI's own dialog; a permission takes the chat's decision.
     if (this.terminal?.questions.has(String(requestId))) {
       const gate = String(requestId);
-      if (gate.startsWith(PERMISSION_GATE_PREFIX)) return this.terminal.answer(gate, { behavior: behavior === "allow" ? "allow" : "deny", message });
+      if (gate.startsWith(PERMISSION_GATE_PREFIX)) {
+        return this.terminal.answer(gate, {
+          behavior: behavior === "allow" ? "allow" : "deny",
+          message,
+          ...(updatedInput ? { updatedInput } : {})
+        });
+      }
       return this.terminal.answer(gate, null);
     }
     // Only an explicit false means refused — engines with no gate of their own return undefined.

@@ -22,6 +22,7 @@ export interface AiToolCardProps {
   engine?: string;
   workspacePath?: string;
   deferred?: boolean;
+  filtered?: boolean;
 }
 
 export const AiToolCard = memo(function AiToolCard({
@@ -34,7 +35,8 @@ export const AiToolCard = memo(function AiToolCard({
   status = "done",
   children = [],
   engine = "claude",
-  workspacePath = ""
+  workspacePath = "",
+  filtered = false
 }: AiToolCardProps) {
   const isRunning = status === "running";
   const isError = Boolean(error || status === "error");
@@ -140,6 +142,11 @@ export const AiToolCard = memo(function AiToolCard({
                 {" "}
                 <span className="text-text-muted break-all" title={displayCmd}>{displayCmd}</span>
               </>
+            )}
+            {filtered && (
+              <span className="ml-1.5 px-1 py-0.5 text-[9px] rounded bg-warning/15 text-warning font-sans" title="Output modified by a hook or filter">
+                filtered
+              </span>
             )}
           </div>
 

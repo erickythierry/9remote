@@ -188,6 +188,17 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
       const task = taskNotificationFrom(d);
       if (task) pushTaskNotification(task);
     }
+    // Demarcate conversation compaction in the chat timeline.
+    if (d.isCompactSummary) {
+      push({
+        event: "cli_event",
+        data: {
+          type: "system",
+          subtype: "context_compacted",
+          record: { text: textOf(d) }
+        }
+      });
+    }
     // Sidechain/injected records are not typed turns — drawing them miscounts the rewind indices and ends the log mid-turn.
     if (d.type === "user" && d.message && !d.isSidechain && !isClaudeInjectedTurn(d)) {
       // Through textOf: a typed turn may be a plain string, and .find on a string throws.
@@ -204,6 +215,8 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
         const resultText = typeof tr.content === "string"
           ? tr.content
           : (tr.content || []).map((c: any) => (typeof c === "string" ? c : c?.text || "")).join("");
+        // Detect tool output replaced by local hooks (e.g. caveman / shell filter replacements).
+        const isFiltered = /trocada por um filtro|output replacement|updatedToolOutput/i.test(resultText);
         // The flag is the whole answer on both doors — a text match only ever added false errors.
         const isError = Boolean(tr.is_error);
         const call = toolCalls.get(tr.tool_use_id);
@@ -217,6 +230,7 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
             // Same collapse the live door applies, so a reopened chat shows the line the pane showed live.
             output: isError ? output : collapsePersisted(resultText),
             error: isError ? output : "",
+            ...(isFiltered ? { filtered: true } : null),
             // `running`, not `done` — the work outlives the call, and the handle lets a later record settle it.
             ...(async ? { status: "running", async: true, handle: async.id } : null)
           }));

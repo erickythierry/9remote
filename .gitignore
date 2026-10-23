@@ -48,6 +48,7 @@ next-env.d.ts
 docs/*
 !docs/typescript-migration/
 !docs/typescript-migration/**
+!docs/claude-code-*.md
 worker/node_modules/*
 worker/.wrangler/*
 worker/package-lock.json

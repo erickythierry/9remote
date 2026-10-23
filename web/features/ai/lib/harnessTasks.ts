@@ -412,12 +412,12 @@ export function noticeFrom(type: string, record: any, engine: string | null = nu
   }
   // The one record whose live frame carries no text at all — see compactFrom. Read before
   // the content rules below, which would otherwise drop it.
-  if (type === "system" && record.subtype === "compact_boundary") {
+  if (type === "system" && (record.subtype === "compact_boundary" || record.subtype === "context_compacted")) {
     const compact = compactFrom(record);
-    const text = typeof record.content === "string" ? record.content.trim() : "";
+    const text = typeof record.content === "string" ? record.content.trim() : (typeof record.text === "string" ? record.text.trim() : "");
     if (!compact && !text) return null;
     return {
-      subtype: "compact_boundary", level: record.level || "info", content: text || "Compacted",
+      subtype: "compact_boundary", level: record.level || "info", content: text || "Conversation compacted",
       // The boundary is also the end of a compaction the CLI announced it had started, so
       // the pane replaces that row rather than stacking this one under it.
       compactSettled: true,

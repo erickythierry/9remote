@@ -87,3 +87,26 @@ export function resumeLineForProfile(line: string, configDir: string | null): st
   if (launcher) return line.startsWith("claude") ? launcher.cmd + line.slice("claude".length) : line;
   return process.platform === "win32" ? line : `CLAUDE_CONFIG_DIR=${shellQuote(configDir)} ${line}`;
 }
+
+/** Pre-accepts folder trust in the target profile's state file so Claude Code never blocks on a terminal dialog. */
+export function trustClaudeFolder(folder: string, launcher: string = ""): void {
+  const file = claudeStateFile(claudeConfigDir(launcher));
+  const resolved = path.resolve(folder);
+  try {
+    let data: any = {};
+    if (fs.existsSync(file)) {
+      try { data = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
+    }
+    data.projects = data.projects || {};
+    if (data.projects[resolved]?.hasTrustDialogAccepted) return;
+    data.projects[resolved] = {
+      ...(data.projects[resolved] || {}),
+      hasTrustDialogAccepted: true
+    };
+    const dir = path.dirname(file);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
+    fs.renameSync(tmp, file);
+  } catch {}
+}

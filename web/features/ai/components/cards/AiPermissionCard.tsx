@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useState } from "react";
-import { Shield, Check, X, CornerDownLeft } from "@/shared/components/ui/Icon";
+import { Shield, Check, X } from "@/shared/components/ui/Icon";
 import { vibrate } from "@/shared/utils/vibration";
 import { permissionGrantText } from "../../lib/permissionGrant";
 
@@ -10,7 +10,7 @@ export interface AiPermissionCardProps {
   tool?: string;
   input?: any;
   failed?: boolean;
-  onResolve?: (requestId: string, action: string, msg?: string) => void;
+  onResolve?: (requestId: string, action: string, msg?: string, answers?: any, updatedInput?: any) => void;
 }
 
 export const AiPermissionCard = memo(function AiPermissionCard({
@@ -22,6 +22,9 @@ export const AiPermissionCard = memo(function AiPermissionCard({
 }: AiPermissionCardProps) {
   const [customMsg, setCustomMsg] = useState("");
   const [showInput, setShowInput] = useState(false);
+  const isBash = typeof input?.command === "string";
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedCommand, setEditedCommand] = useState(input?.command || "");
 
   // A permission GRANT (codex asking for more than the thread opened with) has no command
   // to show: what it wants is a profile — network, or paths outside the sandbox — and the
@@ -32,7 +35,10 @@ export const AiPermissionCard = memo(function AiPermissionCard({
 
   const handleAllow = () => {
     vibrate();
-    onResolve?.(requestId, "allow");
+    const updated = isEditing && isBash && editedCommand.trim() !== input?.command?.trim()
+      ? { ...input, command: editedCommand }
+      : null;
+    onResolve?.(requestId, "allow", "", null, updated);
   };
 
   const handleDeny = () => {
@@ -52,9 +58,20 @@ export const AiPermissionCard = memo(function AiPermissionCard({
         </span>
       </div>
 
-      <div className="p-2.5 rounded bg-bg font-mono text-[11px] text-text break-all border border-border-subtle mb-3 max-h-[140px] overflow-y-auto">
-        {command}
-      </div>
+      {isEditing ? (
+        <div className="mb-3">
+          <textarea
+            value={editedCommand}
+            onChange={(e) => setEditedCommand(e.target.value)}
+            className="w-full p-2.5 rounded bg-bg font-mono text-[11px] text-text border border-brand-500 focus:outline-none min-h-[70px] max-h-[180px]"
+            autoFocus
+          />
+        </div>
+      ) : (
+        <div className="p-2.5 rounded bg-bg font-mono text-[11px] text-text break-all border border-border-subtle mb-3 max-h-[140px] overflow-y-auto">
+          {command}
+        </div>
+      )}
 
       {showInput && (
         <div className="mb-3">
@@ -76,6 +93,16 @@ export const AiPermissionCard = memo(function AiPermissionCard({
       )}
 
       <div className="flex items-center gap-2 justify-end">
+        {isBash && (
+          <button
+            type="button"
+            onClick={() => setIsEditing(!isEditing)}
+            className="px-2.5 py-1.5 rounded text-text-muted hover:text-text hover:bg-surface-2 transition-colors"
+          >
+            {isEditing ? "Cancel edit" : "Edit command"}
+          </button>
+        )}
+
         {!showInput ? (
           <button
             type="button"
@@ -109,7 +136,7 @@ export const AiPermissionCard = memo(function AiPermissionCard({
           className="px-3.5 py-1.5 rounded bg-brand-500 hover:bg-brand-600 text-white flex items-center gap-1 font-medium transition-colors shadow-sm"
         >
           <Check size={14} />
-          <span>Allow</span>
+          <span>{isEditing ? "Allow with edit" : "Allow"}</span>
         </button>
       </div>
     </div>

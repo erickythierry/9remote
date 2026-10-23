@@ -615,10 +615,24 @@ const ROVO_END = "  # 9remote hooks end";
 
 const TOOL_REGISTRY: Record<string, ToolHook> = {
   claude: makeNestedJsonHook("claude",
-    { UserPromptSubmit: "working", PreToolUse: "working", PostToolUse: "working",
-      Stop: "done", PermissionRequest: "blocked", Notification: "blocked" },
+    {
+      UserPromptSubmit: "working", PreToolUse: "working", PostToolUse: "working",
+      Stop: "done", PermissionRequest: "blocked", Notification: "blocked",
+      SubagentStart: "working", SubagentStop: "working",
+      PreCompact: "working", PostCompact: "working",
+      Elicitation: "blocked",
+    },
     (ms) => ms,
-    { matchers: { Notification: "permission_prompt" }, extra: applyClaudeEnv, sessionId: true, extraEntries: { PreToolUse: [gateEntry("AskUserQuestion")], PermissionRequest: [gateEntry("")] } }),
+    {
+      matchers: { Notification: "permission_prompt" },
+      extra: applyClaudeEnv,
+      sessionId: true,
+      extraEntries: {
+        PreToolUse: [gateEntry("AskUserQuestion")],
+        PermissionRequest: [gateEntry("")],
+        Elicitation: [gateEntry("")],
+      },
+    }),
   // Claude-style hooks in the CLI's own config; the session_id key matches agentCatalog.
   devin: makeNestedJsonHook("devin",
     { UserPromptSubmit: "working", PreToolUse: "working", PostToolUse: "working",

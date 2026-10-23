@@ -27,19 +27,38 @@ export async function handleQuestionPost(req: IncomingMessage, res: ServerRespon
   try { hook = JSON.parse(body || "{}"); } catch { return jsonErr(res, 400, "Invalid JSON"); }
   const sessionId = new URL(req.url || "", "http://x").searchParams.get("sessionId") || "";
   const terminal = globalAiManager.getSession(sessionId)?.terminal;
+  if (!terminal) return res.end();
+
+  if (hook.hook_event_name === "Elicitation") {
+    const serverName = String(hook?.mcp_server_name || "mcp");
+    const result = await terminal.ask(
+      `elicitation-${Date.now()}`,
+      `MCP: ${serverName}`,
+      { serverName, schema: hook?.schema, message: hook?.message },
+      CLAUDE_QUESTION_WAIT_MS
+    );
+    if (!result) return res.end();
+    return reply(res, {
+      hookEventName: "ElicitationResult",
+      result: typeof result === "object" ? result : { value: result }
+    });
+  }
+
   const toolName = String(hook?.tool_name || "");
   const input = hook?.tool_input || {};
-  if (!terminal || !toolName) return res.end();
+  if (!toolName) return res.end();
 
   if (hook.hook_event_name === "PermissionRequest") {
     // AskUserQuestion is answered by the PreToolUse gate; its permission step is not a question to the user.
     if (toolName === "AskUserQuestion") return res.end();
     const decision = await terminal.ask(`${PERMISSION_GATE_PREFIX}${Date.now()}`, toolName, input, CLAUDE_QUESTION_WAIT_MS);
     if (!decision) return res.end();
+    const isAllow = decision.behavior === "allow";
+    const updatedInput = decision.updatedInput || input;
     return reply(res, {
       hookEventName: "PermissionRequest",
-      decision: decision.behavior === "allow"
-        ? { behavior: "allow" }
+      decision: isAllow
+        ? { behavior: "allow", ...(decision.updatedInput ? { updatedInput } : {}) }
         : { behavior: "deny", message: decision.message || "Denied from the chat." }
     });
   }

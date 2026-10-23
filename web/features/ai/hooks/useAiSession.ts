@@ -1426,7 +1426,7 @@ export function useAiSession({
   );
 
   const resolvePermission = useCallback(
-    (requestId: string, behavior: string, message: string = "", answers: any = null) => {
+    (requestId: string, behavior: string, message: string = "", answers: any = null, updatedInput: any = null) => {
       const b = busRef.current; // no store fallback — null (foreign bus not up) must wait, not hit the main machine
       if (!b) return;
       // Cleared only on the host's ok. Dropping the card first meant an emit that fell
@@ -1450,7 +1450,7 @@ export function useAiSession({
         useAiStore.getState().setGateError(sessionId, requestId);
       };
       if (answers) b.emit("ai:question", { sessionId, requestId, answers }, done);
-      else b.emit("ai:permission", { sessionId, requestId, behavior, message }, done);
+      else b.emit("ai:permission", { sessionId, requestId, behavior, message, ...(updatedInput ? { updatedInput } : {}) }, done);
       // An emit into a dead carrier never reaches the ack timer at all — nothing calls
       // back and nothing errors, so the card must time out on its own.
       timer = setTimeout(() => done(null), RESOLVE_ACK_TIMEOUT_MS);
