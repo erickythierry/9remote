@@ -20,7 +20,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { CLAUDE_SESSION_ID_RE, isTypedTurn, textOf, liveTranscript } from "./claudeTranscript.js";
+import { CLAUDE_SESSION_ID_RE, claudeEntrypoint, isTypedTurn, textOf, liveTranscript } from "./claudeTranscript.js";
 import { claudeProjectsDirs } from "./claudeProfile.js";
 
 // Overridable so a test can point at its own projects tree: the real one is the user's
@@ -53,6 +53,20 @@ export function findTranscript(cliSessionId?: string | null): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Whether a conversation id a hook reported is one this terminal's TUI may follow.
+ *
+ * A background sub-agent is its own headless session whose hooks inherit the terminal's
+ * NINE_REMOTE_SESSION_ID, so its id reaches the notify endpoint like a /clear would — and the
+ * chat followed it until the main agent's next hook. Unknown (no transcript yet) is refused:
+ * the same session's next hook carries the id again, once the file exists.
+ */
+export function isFollowableConversation(cliSessionId: string): boolean {
+  const file = findTranscript(cliSessionId);
+  if (!file) return false;
+  return !claudeEntrypoint(cliSessionId, file)?.startsWith("sdk");
 }
 
 /**

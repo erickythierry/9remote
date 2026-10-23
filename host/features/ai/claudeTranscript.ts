@@ -54,6 +54,29 @@ function slimSystemRecord(record: any): any {
   };
 }
 
+const ENTRYPOINT_RE = /"entrypoint":"([^"]+)"/;
+const ENTRYPOINT_HEAD_BYTES = 64 * 1024;
+const entrypoints = new Map<string, string>();
+
+// "cli" is the interactive TUI; a background sub-agent runs as its own headless session ("sdk-cli") with its own id.
+export function claudeEntrypoint(cliSessionId: string, file: string): string | null {
+  const known = entrypoints.get(cliSessionId);
+  if (known) return known;
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(file, "r");
+    const buf = Buffer.alloc(ENTRYPOINT_HEAD_BYTES);
+    const read = fs.readSync(fd, buf, 0, buf.length, 0);
+    const found = ENTRYPOINT_RE.exec(buf.toString("utf8", 0, read))?.[1];
+    if (found) entrypoints.set(cliSessionId, found);
+    return found ?? null;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
 export function findTranscript(cwd: string, cliSessionId: string, launcher: string = ""): string | null {
   const safeCwd = String(cwd).replace(/[/\\:]/g, "-");
   for (const projectsDir of claudeProjectsDirs(launcher)) {

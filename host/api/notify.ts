@@ -12,7 +12,8 @@ import { broadcast } from "../transport/broadcast.js";
 import { sendPushNotification } from "../features/terminal/pushManager.js";
 import { applyEvent, STATES, TYPE_TO_STATE, setConversationId, getConversation, getSessionAgent, requestAutoName, scheduleDoneCommit } from "../features/terminal/statusManager.js";
 import { sessionIdFromHookPayload, SESSION_ID_RE } from "../features/terminal/agentCatalog.js";
-import { agentOverridesDetected, surfaceAgent } from "../features/terminal/customAgents.js";
+import { agentOverridesDetected, baseOfAgentId, surfaceAgent } from "../features/terminal/customAgents.js";
+import { isFollowableConversation } from "../features/ai/claudeRewind.js";
 import { addNotification } from "../features/terminal/notificationManager.js";
 import { onWorkerDone } from "../features/jarvis/jarvisWake.js";
 
@@ -103,6 +104,14 @@ function attributeTool(sessionId: string, tool: string | null | undefined) {
   return agentOverridesDetected(current, tool) ? surfaceAgent(current) : tool;
 }
 
+// The first id of a terminal is taken as is; a later, different claude id must be an interactive session, not a sub-agent's.
+function shouldFollow(sessionId: string, tool: string | null | undefined, conversationId: string) {
+  if (baseOfAgentId(tool) !== "claude") return true;
+  const prev = getConversation(sessionId);
+  if (!prev || prev.id === conversationId) return true;
+  return isFollowableConversation(conversationId);
+}
+
 function dispatchNotify(params: NotifyParams) {
   const { type, sessionId } = params;
   const tool = attributeTool(sessionId, params.tool);
@@ -112,7 +121,7 @@ function dispatchNotify(params: NotifyParams) {
 
   // The CLI's own conversation id — stored before the broadcast below carries it
   const conversationId = conversationIdFrom(tool, params);
-  if (conversationId) setConversationId(sessionId, tool, conversationId, "hook");
+  if (conversationId && shouldFollow(sessionId, tool, conversationId)) setConversationId(sessionId, tool, conversationId, "hook");
 
   // A done waits out its debounce window so the next turn's first hook can
   // cancel the flash; every other state commits now (and cancels it — applyEvent).
