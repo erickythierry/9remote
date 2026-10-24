@@ -968,6 +968,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
             onOpenFiles={handleOpenFiles}
             onLogout={handleLogoutWithConfirm}
             onDeleteWorkspace={deleteWorkspace}
+            onRenameWorkspace={renameWorkspace}
             onReorderSession={reorderSession}
             onAddWorkspace={openFolderPicker}
             onSetHiddenRepos={setWorkspaceHiddenRepos}
