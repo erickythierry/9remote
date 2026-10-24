@@ -248,28 +248,28 @@ export class ClaudeTerminal {
       case "enqueue":
         this.queued.push({ id: `tq-${++this.queueSeq}`, text, key, hidden: !key || text.includes("<task-notification>") });
         return;
+      // Taken items are only marked seen: syncQueue drops them, and splicing here would hide the change from its diff and skip the emit.
       case "dequeue": {
         const dequeued = this.queued.shift();
-        if (dequeued) {
-          const at = (this.session.promptQueue || []).findIndex((i) => i.key === dequeued.key || echoKey(i.text) === dequeued.key);
-          if (at !== -1) this.session.promptQueue.splice(at, 1);
-        }
+        if (dequeued) this.markTaken(dequeued.key);
         return;
       }
       case "popAll":
         this.queued = [];
-        if (Array.isArray(this.session.promptQueue)) {
-          this.session.promptQueue = this.session.promptQueue.filter((i) => !i.tui);
-        }
+        for (const i of this.session.promptQueue || []) if (i.tui) i.seen = true;
         return;
       case "remove": {
         const at = this.queued.findIndex((q) => q.key === key);
         if (at !== -1) this.queued.splice(at, 1);
-        const sAt = (this.session.promptQueue || []).findIndex((i) => i.key === key || echoKey(i.text) === key);
-        if (sAt !== -1) this.session.promptQueue.splice(sAt, 1);
+        this.markTaken(key);
         return;
       }
     }
+  }
+
+  markTaken(key: string) {
+    const item = (this.session.promptQueue || []).find((i) => i.tui && (i.key === key || echoKey(i.text) === key));
+    if (item) item.seen = true;
   }
 
   // The chat's queue is the TUI's, plus what the chat typed that the transcript has not shown yet.
