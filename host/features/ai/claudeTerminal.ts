@@ -251,19 +251,21 @@ export class ClaudeTerminal {
       case "dequeue": {
         const dequeued = this.queued.shift();
         if (dequeued) {
-          const at = this.session.promptQueue.findIndex((i) => i.key === dequeued.key || echoKey(i.text) === dequeued.key);
+          const at = (this.session.promptQueue || []).findIndex((i) => i.key === dequeued.key || echoKey(i.text) === dequeued.key);
           if (at !== -1) this.session.promptQueue.splice(at, 1);
         }
         return;
       }
       case "popAll":
         this.queued = [];
-        this.session.promptQueue = this.session.promptQueue.filter((i) => !i.tui);
+        if (Array.isArray(this.session.promptQueue)) {
+          this.session.promptQueue = this.session.promptQueue.filter((i) => !i.tui);
+        }
         return;
       case "remove": {
         const at = this.queued.findIndex((q) => q.key === key);
         if (at !== -1) this.queued.splice(at, 1);
-        const sAt = this.session.promptQueue.findIndex((i) => i.key === key || echoKey(i.text) === key);
+        const sAt = (this.session.promptQueue || []).findIndex((i) => i.key === key || echoKey(i.text) === key);
         if (sAt !== -1) this.session.promptQueue.splice(sAt, 1);
         return;
       }
@@ -416,7 +418,7 @@ export class ClaudeTerminal {
       if (this.muted || (ev.event === "cli_event" && ev.data?.type === "attachment")) return;
       if (ev.event === "user_message") {
         const textKey = echoKey(String(ev.data?.text || ""));
-        const qIdx = s.promptQueue.findIndex((i) => i.key === textKey || echoKey(i.text) === textKey);
+        const qIdx = (s.promptQueue || []).findIndex((i) => i.key === textKey || echoKey(i.text) === textKey);
         if (qIdx !== -1) {
           s.promptQueue.splice(qIdx, 1);
           s.emitQueueUpdate();

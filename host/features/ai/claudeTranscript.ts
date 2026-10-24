@@ -288,7 +288,7 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
         event: "cli_event",
         data: { type: "system", subtype: d.subtype || "", record: slimSystemRecord(d) }
       });
-      if (d.subtype === "stop_hook_summary") {
+      if (d.subtype === "stop_hook_summary" || d.subtype === "turn_duration") {
         push({ event: "turn_complete", data: { stats: {} } });
       }
     } else if (d.type === "assistant" && d.message) {
