@@ -8,6 +8,38 @@ export function bufferTotal(chunks: Buffer[] | null | undefined): number {
   return chunks.reduce((sum, c) => sum + c.length, 0);
 }
 
+// Drop bytes from the head until `total` <= maxLen, then skip to the next ESC (bounded ≤512B) so the
+// head starts on a clean sequence. O(dropped chunks), no concat. Returns the new byte total.
+export function trimBufferHead(chunks: Buffer[], total: number, maxLen: number): number {
+  const LIMIT = 512;
+  const dropHead = (n: number) => {
+    while (n > 0 && chunks.length) {
+      const head = chunks[0];
+      if (head.length <= n) {
+        chunks.shift();
+        total -= head.length;
+        n -= head.length;
+      } else {
+        chunks[0] = head.subarray(n);
+        total -= n;
+        n = 0;
+      }
+    }
+  };
+  dropHead(total - maxLen);
+  // The cut may land mid-sequence; the next ESC can sit in a later chunk.
+  let seen = 0;
+  for (let i = 0; i < chunks.length && seen < LIMIT; i++) {
+    const at = chunks[i].subarray(0, LIMIT - seen).indexOf(0x1b);
+    if (at !== -1) {
+      dropHead(seen + at);
+      break;
+    }
+    seen += chunks[i].length;
+  }
+  return total;
+}
+
 // Take up to maxLen bytes from the END of the buffer. The leading byte cut may land mid-ANSI or
 // mid-UTF8 → skip forward to the next ESC (bounded ≤512B) so the tail starts on a clean sequence.
 export function takeBufferTail(chunks: Buffer[] | null | undefined, maxLen: number): Buffer {

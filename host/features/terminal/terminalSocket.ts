@@ -27,7 +27,7 @@ import { surfaceAgent } from "./customAgents.js";
 import { sendTerminalInput, CLEAR_LINE } from "./sessionMode.js";
 import { broadcast } from "../../transport/broadcast.js";
 import { nextSeq, currentSeq, cacheChunk, clearSession as clearSeqSession } from "./seqStore.js";
-import { AUTO_NAME_DEBOUNCE_MS, OUTPUT_SLICE_BYTES, RESPAWN_RESUME_DELAY_MS } from "./constants.js";
+import { AUTO_NAME_DEBOUNCE_MS, OUTPUT_SLICE_BYTES, RESPAWN_RESUME_DELAY_MS, SESSION_METADATA_SAVE_DEBOUNCE_MS } from "./constants.js";
 import { createLogger } from "../../lib/logger.js";
 import type { Server, Socket } from "socket.io";
 import type { TerminalSession, SessionMetadata, WorkspaceRecord, TerminalWorkspaceState } from "./ptyHelper.js";
@@ -162,6 +162,25 @@ async function _syncDaemonSessions() {
 // different transcripts and must not cancel each other.
 const autoNameTimers = new Map<string, NodeJS.Timeout>();
 let autoNameIo: Server | null = null;
+
+// Coalesce the sessions.json writes fired by OSC 7 cwd changes (one per prompt).
+let sessionMetadataTimer: NodeJS.Timeout | null = null;
+function scheduleSessionMetadataSave() {
+  if (sessionMetadataTimer) return;
+  sessionMetadataTimer = setTimeout(() => {
+    sessionMetadataTimer = null;
+    saveSessionMetadata(sessions);
+  }, SESSION_METADATA_SAVE_DEBOUNCE_MS);
+}
+
+/** Flush any pending debounced metadata write immediately (used during graceful shutdown). */
+export function flushSessionMetadata(): void {
+  if (!sessionMetadataTimer) return;
+  clearTimeout(sessionMetadataTimer);
+  sessionMetadataTimer = null;
+  try { saveSessionMetadata(sessions); } catch (e) { termLogger.warn(`flush session metadata failed: ${(e as Error).message}`); }
+}
+
 function scheduleAutoName(sessionId: string) {
   if (!autoNameIo || !sessionId || autoNameTimers.has(sessionId)) return;
   autoNameTimers.set(sessionId, setTimeout(() => {
@@ -439,7 +458,9 @@ export const setupTerminalSocket: SetupTerminalSocketType = function (io: Server
 
     daemonClient.on("cwdChange", ({ sessionId, cwd }: any) => {
       const session = sessions.get(sessionId);
-      if (session && cwd && session.cwd !== cwd) { session.cwd = cwd; saveSessionMetadata(sessions); }
+      // OSC 7 fires on every prompt, so persist debounced instead of writing the
+      // whole sessions.json synchronously for each `cd`/command.
+      if (session && cwd && session.cwd !== cwd) { session.cwd = cwd; scheduleSessionMetadataSave(); }
       broadcast(io, "cwdChange", { sessionId, cwd });
     });
     daemonClient.on("processChange", ({ sessionId, process: procName }: any) => {

@@ -12,7 +12,7 @@ import pty from "node-pty";
 import { resolveShell, buildShellArgs, DAEMON_VERSION } from "./constants.js";
 import { createRouter, type RouteHandler } from "./daemonRouter.js";
 import { createKvStore, kvRoutes } from "./daemonKv.js";
-import { takeBufferTail, takeBufferRange, bufferTotal } from "./bufferSlice.js";
+import { takeBufferTail, takeBufferRange, trimBufferHead } from "./bufferSlice.js";
 
 // NREMOTE_HOME keeps daemon state inside client root to isolate test daemon.
 const SOCKET_DIR = process.env.NREMOTE_HOME || path.join(os.homedir(), ".9remote");
@@ -49,6 +49,9 @@ type ProcOptions = {
 type DaemonSession = {
   pty: PtyProcess;
   buffer: Buffer[];
+  // Incremental byte total of `buffer` — keeps the scrollback trim O(1) instead of
+  // walking (and re-concatenating) the whole 2MB array on every PTY chunk.
+  bufferBytes: number;
   modes: Set<string>;
   name: string | undefined;
   createdAt: number;
@@ -412,6 +415,7 @@ function createSession(sessionId: string, name: string | undefined, cols = 80, r
     const session: DaemonSession = {
       pty: ptyProcess,
       buffer: [],
+      bufferBytes: 0,
       modes: new Set(),
       name,
       createdAt: Date.now(),
@@ -440,7 +444,9 @@ function createSession(sessionId: string, name: string | undefined, cols = 80, r
     };
 
     ptyProcess.onData((data: string) => {
-      session.buffer.push(Buffer.from(data, "utf-8"));
+      const chunk = Buffer.from(data, "utf-8");
+      session.buffer.push(chunk);
+      session.bufferBytes += chunk.length;
       applyModes(session.modes, data);
       // Track live cwd from OSC 7 escape sequence.
       const osc7 = data.match(/\x1b\]7;file:\/\/[^/]*([^\x07\x1b]*)/);
@@ -454,9 +460,8 @@ function createSession(sessionId: string, name: string | undefined, cols = 80, r
           broadcast({ type: "cwdChange", sessionId, cwd: next });
         }
       }
-      const totalSize = bufferTotal(session.buffer);
-      if (totalSize > MAX_BUFFER_SIZE) {
-        session.buffer = [takeBufferTail(session.buffer, MAX_BUFFER_SIZE)];
+      if (session.bufferBytes > MAX_BUFFER_SIZE) {
+        session.bufferBytes = trimBufferHead(session.buffer, session.bufferBytes, MAX_BUFFER_SIZE);
       }
 
       session.pending = session.pending === null ? data : session.pending + data;
@@ -560,7 +565,7 @@ const terminalRoutes = {
       cwd: session.cwd,
       shellId: session.shellId,
       shellLabel: session.shellLabel,
-      total: bufferTotal(session.buffer),
+      total: session.bufferBytes,
       replaySize: history ? history.length : 0
     };
   },
@@ -569,7 +574,7 @@ const terminalRoutes = {
     // Return chunk of older buffer history preceding what client currently has.
     const session = sessions.get(m.sessionId!);
     if (!session) return { success: false, error: "Session not found" };
-    const total = bufferTotal(session.buffer);
+    const total = session.bufferBytes;
     const have = Math.max(0, Math.min(m.have || 0, total));
     const remaining = total - have;
     const chunkLen = Math.min(HISTORY_CHUNK_SIZE, remaining);

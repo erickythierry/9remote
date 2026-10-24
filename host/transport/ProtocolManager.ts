@@ -32,6 +32,24 @@ type ProtocolConfig = {
 };
 type AdapterStats = { binChunks: number; b64Chunks: number; sentRtc: number; sentWs: number; binAnnounced: boolean; env2Announced: boolean };
 type BufferedControl = { event: string; args: unknown[]; ackId?: string | null };
+// Live terminal output held while the carrier is backpressured. Kept out of
+// `_buffer` because that one drops the oldest entry on overflow, and a dropped
+// output slice corrupts xterm's state (ANSI sequences, modes).
+type QueuedOutput = { payload: unknown; ackId?: string | null; bytes: number };
+
+// Safety valve for the output backlog: the queue only grows when a peer is
+// slower than the PTY, and a flood on a 4G link would otherwise grow forever.
+const OUTPUT_QUEUE_MAX_BYTES = 32 * 1024 * 1024;
+// How often a backpressured peer's backlog is retried.
+const OUTPUT_DRAIN_MS = 20;
+
+function outputPayloadBytes(payload: unknown): number {
+  if (payload === null || typeof payload !== "object" || !("data" in payload)) return 0;
+  const data = (payload as { data?: unknown }).data;
+  if (Buffer.isBuffer(data)) return data.length;
+  if (typeof data === "string") return data.length;
+  return 0;
+}
 type TileRef = { tileIndex: number };
 type TileEnvelope = { tiles: TileRef[]; timestamp?: number };
 type PeerCapabilities = { binOut?: boolean; env2?: boolean; fragCtl?: boolean; hb?: boolean };
@@ -84,6 +102,19 @@ export class ProtocolManager {
   _rtcSignalingHandler: ((message: SignalingMessage) => void) | null;
   _wsPendingSince: Map<number, number>;
   _rtcPendingSince: Map<number, number>;
+  // Adapter choice per channel is stable until a carrier changes state, and the
+  // picker allocates + sorts on every call — cache it, keyed by a generation
+  // bumped on every state change.
+  _adapterCache: Map<string, { adapter: ProtocolAdapter | null; gen: number }>;
+  _adapterGen: number;
+  // Output the carrier refused for backpressure — drained when the socket frees up.
+  _outputQueue: QueuedOutput[];
+  _outputQueueBytes: number;
+  _outputDrainTimer: ReturnType<typeof setTimeout> | null;
+  _outputOverflowLogged: boolean;
+  // Sessions this peer subscribed to for live output. null = never announced
+  // (legacy client) → it keeps receiving every session, as before.
+  _outputSubs: Set<string> | null;
   declare _attachingWs: Promise<void> | null;
   declare _offGlobalSig: (() => void) | null;
   declare _offGlobalReady: (() => void) | null;
@@ -126,6 +157,13 @@ export class ProtocolManager {
     this._rtcSignalingHandler = null;
     this._wsPendingSince = new Map();
     this._rtcPendingSince = new Map();
+    this._adapterCache = new Map();
+    this._adapterGen = 0;
+    this._outputQueue = [];
+    this._outputQueueBytes = 0;
+    this._outputDrainTimer = null;
+    this._outputOverflowLogged = false;
+    this._outputSubs = null;
   }
 
   get type(): "dc" | "ws" {
@@ -153,6 +191,7 @@ export class ProtocolManager {
         throw err;
       }
       this._adapters.set(id, inst);
+      this._invalidateAdapterCache();
     }
     this.setupSignaling(this._socket);
   }
@@ -166,6 +205,7 @@ export class ProtocolManager {
       // Evict a stale ws adapter: its socket died undetected (half-open tunnel)
       // and would silently refuse this live socket — events would hit zero listeners.
       this._adapters.delete("ws");
+      this._invalidateAdapterCache();
       const staleSocket = existing.socket;
       try { existing.disconnect(); } catch {}
       try { staleSocket?.disconnect?.(true); } catch {}
@@ -193,9 +233,12 @@ export class ProtocolManager {
     inst.on("binary", (msg) => this._onBinary(msg));
     await inst.connect(this._buildCtx("ws"));
     this._adapters.set("ws", inst);
+    // connect() already fired stateChange while "ws" was missing from the map, so a pick made then is cached as null.
+    this._invalidateAdapterCache();
     const onDisconnect = () => {
       if (this._adapters.get("ws") !== inst) return;
       this._adapters.delete("ws");
+      this._invalidateAdapterCache();
       this._socket = null;
       try { inst.disconnect(); } catch {}
     };
@@ -249,6 +292,7 @@ export class ProtocolManager {
       inst.on("binary", (msg) => this._onBinary(msg));
       if (this._peerCaps) inst.setPeerCaps?.(this._peerCaps);
       this._adapters.set("rtc", inst);
+      this._invalidateAdapterCache();
       inst.connect(this._buildCtx("rtc"));
     } catch (e) {
       console.warn(`[ProtocolManager] restartRtc failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -281,6 +325,11 @@ export class ProtocolManager {
     clearInterval(this._statsTimer);
     if (this._deadTimer) clearTimeout(this._deadTimer);
     this._deadTimer = null;
+    if (this._outputDrainTimer) clearTimeout(this._outputDrainTimer);
+    this._outputDrainTimer = null;
+    this._outputQueue = [];
+    this._outputQueueBytes = 0;
+    this._invalidateAdapterCache();
     try { this._offGlobalSig?.(); } catch {}
     this._offGlobalSig = null;
     try { this._offGlobalReady?.(); } catch {}
@@ -399,12 +448,15 @@ export class ProtocolManager {
 
   _onAdapterStateChange(adapterId: string, state: ProtocolState): void {
     if (this._closed) return;
+    // Carrier set changed → any cached pick may now be wrong.
+    this._invalidateAdapterCache();
     logger.debug(`${adapterId}→${state} (carriers: ${[...this._adapters.entries()].map(([id, a]) => `${id}=${a.ready ? "ready" : a.state}`).join(" ")})`);
     pushTransportState();
     if (state === ADAPTER_STATE.open) {
       if (this._deadTimer) clearTimeout(this._deadTimer);
       this._deadTimer = null;
       this._flushBuffer();
+      this._drainOutput();
       return;
     }
     if (state === ADAPTER_STATE.closed && adapterId === "rtc"
@@ -423,14 +475,27 @@ export class ProtocolManager {
     }
   }
 
+  _invalidateAdapterCache(): void {
+    this._adapterGen++;
+    this._adapterCache.clear();
+  }
+
   _pickAdapter(channel: string): ProtocolAdapter | null {
+    const cached = this._adapterCache.get(channel);
+    // A cached adapter that is still ready stays valid across generation bumps —
+    // only re-pick when the carrier actually changed underneath us.
+    if (cached && cached.gen === this._adapterGen) return cached.adapter;
+
     const cfg = this._profile.channels[channel];
     if (!cfg) return null;
 
     const candidates = [...this._adapters.values()]
       .filter((a) => a.supports(channel) && a.ready);
 
-    if (!candidates.length) return null;
+    if (!candidates.length) {
+      this._adapterCache.set(channel, { adapter: null, gen: this._adapterGen });
+      return null;
+    }
 
     candidates.sort((a, b) => {
       const pB = b.getPriority(channel) ?? adapterInfo(b).priority?.[channel] ?? 0;
@@ -443,7 +508,26 @@ export class ProtocolManager {
       return 0;
     });
 
-    return candidates[0] || null;
+    const picked = candidates[0] || null;
+    this._adapterCache.set(channel, { adapter: picked, gen: this._adapterGen });
+    return picked;
+  }
+
+  /** True when this peer wants live output for `sessionId` (legacy peers: always). */
+  wantsOutput(sessionId: string): boolean {
+    if (!this._outputSubs) return true;
+    return this._outputSubs.has(sessionId);
+  }
+
+  subscribeOutput(sessionId: string): void {
+    if (!sessionId) return;
+    if (!this._outputSubs) this._outputSubs = new Set();
+    this._outputSubs.add(sessionId);
+  }
+
+  unsubscribeOutput(sessionId: string): void {
+    if (!sessionId || !this._outputSubs) return;
+    this._outputSubs.delete(sessionId);
   }
 
   hasReadyAdapter(): boolean {
@@ -453,8 +537,11 @@ export class ProtocolManager {
   _sendControl(event: string, args: unknown[], ackId?: string | null): void {
     const adapter = this._pickAdapter(CHANNELS.control);
     if (!adapter) {
-      this._buffer.push({ event, args, ackId });
-      if (this._buffer.length > this._maxControlBuffer) this._buffer.shift();
+      if (event === "output") this._enqueueOutput(args[0], ackId);
+      else {
+        this._buffer.push({ event, args, ackId });
+        if (this._buffer.length > this._maxControlBuffer) this._buffer.shift();
+      }
       return;
     }
     this._legacyB64Down(event, args);
@@ -470,17 +557,85 @@ export class ProtocolManager {
         }
       } else st.b64Chunks++;
     }
-    if (adapterInfo(adapter).id === "rtc") {
-      this._stats.sentRtc++;
-      if (adapter.send(CHANNELS.control, { event, args, ackId })) return;
-      const retry = this._pickAdapter(CHANNELS.control);
-      if (retry && retry !== adapter && retry.send(CHANNELS.control, { event, args, ackId })) return;
-    } else {
-      this._stats.sentWs++;
-      if (adapter.send(CHANNELS.control, { event, args })) return;
+    // A backlog already exists: appending behind it preserves byte order (xterm
+    // depends on it), so never jump the queue with a fresh slice.
+    if (event === "output" && this._outputQueue.length) {
+      this._enqueueOutput(args[0], ackId);
+      return;
+    }
+    if (this._trySendControl(adapter, event, args, ackId)) return;
+    // Output is lossless: hold it until the carrier drains. Everything else is
+    // small and idempotent enough for the bounded buffer below.
+    if (event === "output") {
+      this._enqueueOutput(args[0], ackId);
+      return;
     }
     this._buffer.push({ event, args, ackId });
     if (this._buffer.length > this._maxControlBuffer) this._buffer.shift();
+  }
+
+  /** One send attempt on the chosen carrier, with the RTC→WS retry the old path had. */
+  _trySendControl(adapter: ProtocolAdapter, event: string, args: unknown[], ackId?: string | null): boolean {
+    if (adapterInfo(adapter).id === "rtc") {
+      this._stats.sentRtc++;
+      if (adapter.send(CHANNELS.control, { event, args, ackId })) return true;
+      const retry = this._pickAdapter(CHANNELS.control);
+      if (retry && retry !== adapter && retry.send(CHANNELS.control, { event, args, ackId })) return true;
+      return false;
+    }
+    this._stats.sentWs++;
+    return Boolean(adapter.send(CHANNELS.control, { event, args }));
+  }
+
+  _enqueueOutput(payload: unknown, ackId?: string | null): void {
+    // The no-adapter path enqueues before _sendControl's own downgrade, and the drain sends as-is.
+    const args = [payload];
+    this._legacyB64Down("output", args);
+    payload = args[0];
+    const bytes = outputPayloadBytes(payload);
+    this._outputQueue.push({ payload, ackId, bytes });
+    this._outputQueueBytes += bytes;
+    if (this._outputQueueBytes > OUTPUT_QUEUE_MAX_BYTES) {
+      if (!this._outputOverflowLogged) {
+        this._outputOverflowLogged = true;
+        logger.warn(
+          `output backlog ${this._outputQueueBytes >> 20}MB over cap — dropping oldest slices for peer=${this._deviceId?.slice(0, 12)} (client recovers via seq gap fetch)`
+        );
+      }
+      while (this._outputQueueBytes > OUTPUT_QUEUE_MAX_BYTES && this._outputQueue.length > 1) {
+        const dropped = this._outputQueue.shift();
+        if (!dropped) break;
+        this._outputQueueBytes -= dropped.bytes;
+      }
+    }
+    this._scheduleOutputDrain();
+  }
+
+  _scheduleOutputDrain(): void {
+    if (this._outputDrainTimer || !this._outputQueue.length || this._closed) return;
+    this._outputDrainTimer = setTimeout(() => {
+      this._outputDrainTimer = null;
+      this._drainOutput();
+    }, OUTPUT_DRAIN_MS);
+    this._outputDrainTimer.unref?.();
+  }
+
+  /** Push the held output while the carrier accepts it; stop at the first refusal. */
+  _drainOutput(): void {
+    if (this._closed || !this._outputQueue.length) return;
+    const adapter = this._pickAdapter(CHANNELS.control);
+    if (!adapter) {
+      this._scheduleOutputDrain();
+      return;
+    }
+    while (this._outputQueue.length) {
+      const next = this._outputQueue[0];
+      if (!this._trySendControl(adapter, "output", [next.payload], next.ackId)) break;
+      this._outputQueue.shift();
+      this._outputQueueBytes -= next.bytes;
+    }
+    if (this._outputQueue.length) this._scheduleOutputDrain();
+    else this._outputOverflowLogged = false;
   }
 
   /** Downgrade binary output to base64 for peers without caps.binOut. */
@@ -510,6 +665,7 @@ export class ProtocolManager {
     if (!adapter) return;
     const queued = this._buffer.splice(0);
     for (const { event, args, ackId } of queued) this._sendControl(event, args, ackId);
+    this._drainOutput();
   }
 
   /** Dispatch incoming message from RTC or WS. */

@@ -115,20 +115,29 @@ function warnDuplicate(peers: string[], targets: string[]): void {
   logger.warn(`DUPLICATE: output same peer twice: ${targets.join(", ")}`);
 }
 
-// Broadcast event to all active PMs (routes via best adapter — RTC if WS down).
+// Broadcast event to active PMs (routes via best adapter — RTC if WS down).
+// For "output", respects per-PM session subscriptions (wantsOutput) so inactive
+// terminals don't saturate unrelated tabs/phones.
 // If 2 PMs share one peerId (RTC-first HostBus + WS race) the client gets duplicate output.
 export function broadcast(_io: unknown, event: string, data?: unknown): void {
+  const isOutput = event === "output";
+  const outputSessionId = isOutput && data !== null && typeof data === "object" && "sessionId" in data
+    ? String((data as { sessionId?: unknown }).sessionId || "")
+    : "";
   const peers: string[] = [];
   const targets: string[] = [];
   for (const pm of active) {
     // Skip PMs with no ready adapter — avoids buffering into dying/orphan PMs
     if (!pm.hasReadyAdapter?.()) continue;
+    // Selective fan-out: only send output to peers that subscribed to this session
+    // (legacy peers without subscription support keep receiving everything).
+    if (isOutput && outputSessionId && !pm.wantsOutput(outputSessionId)) continue;
     peers.push(pm._deviceId || "");
     targets.push(`${pm._deviceId?.slice(0, 12)}:${pm.type}`);
     try { pm.emit(event, data); } catch (e) { logger.warn(`emit ${event} failed: ${errorMessage(e)}`); }
   }
   // Compare the FULL peerId ("deviceId:tab") — distinct tabs of one device are legit.
-  if (event === "output") {
+  if (isOutput) {
     if (new Set(peers).size !== peers.length) warnDuplicate(peers, targets);
     return;
   }

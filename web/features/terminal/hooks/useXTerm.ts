@@ -695,6 +695,7 @@ export function useXTerm({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       resizeObserver.disconnect();
       wheelEl.removeEventListener("wheel", handleWheel);
+      bus.emit("unsubscribeSession", { sessionId });
       bus.off("connect", handleReconnect);
       bus.off("output", handleOutput);
       bus.off("cwdChange", handleCwdChange);
@@ -718,6 +719,23 @@ export function useXTerm({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bus, sessionId]);
+
+  // Selective session subscription: tell host to push live output only while
+  // this terminal pane is visible. Off when hidden/unmounted to save radio/CPU.
+  const unsubscribedRef = useRef(false);
+  useEffect(() => {
+    if (!bus || !sessionId) return;
+    if (!isVisible) {
+      unsubscribedRef.current = true;
+      bus.emit("unsubscribeSession", { sessionId });
+      return;
+    }
+    bus.emit("subscribeSession", { sessionId });
+    if (!unsubscribedRef.current) return;
+    unsubscribedRef.current = false;
+    // Output sent while unsubscribed is gone: peek the agent seq and gap-fetch, don't wait for the next live chunk.
+    requestRecoverRef.current?.("resubscribe");
+  }, [bus, sessionId, isVisible]);
 
   // Live WebGL toggle: swap renderer + re-fit on change (no reload needed)
   useEffect(() => {

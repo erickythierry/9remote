@@ -67,6 +67,8 @@ export const RESIZE_SHRINK_SETTLE_MS = 300;
 export const SESSION_NAME_MAX = 40;
 export const AUTO_NAME_RE = /^(Term|Terminal) \d+$/;
 export const AUTO_NAME_DEBOUNCE_MS = 800;
+// Coalesce sessions.json writes triggered by OSC 7 cwd changes (one per prompt).
+export const SESSION_METADATA_SAVE_DEBOUNCE_MS = 1500;
 // How long a respawned shell waits before the agent resume line is typed into it:
 // zsh's instant-prompt discards input that arrives before the first prompt.
 export const RESPAWN_RESUME_DELAY_MS = 2000;

@@ -1,6 +1,7 @@
 // PTY Daemon Client: connects to persistent PTY daemon over local socket.
 
 import net from "net";
+import { StringDecoder } from "string_decoder";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -179,6 +180,9 @@ function prepareDaemonCopy(sourceScript: string): { script: string; cwd: string 
 let client: net.Socket | null = null;
 let connected = false;
 let messageBuffer = "";
+// Per-connection UTF-8 decoder — a multibyte char split across socket chunks must
+// not become U+FFFD (accents and TUI box-drawing break otherwise).
+let decoder: StringDecoder | null = null;
 let requestId = 0;
 const pendingRequests = new Map<number, PendingRequest>();
 const eventHandlers = new Map<string, Array<(data: unknown) => void>>();
@@ -497,6 +501,8 @@ async function _connectToDaemon(): Promise<boolean> {
         resolve(false);
       }, 5000);
 
+      messageBuffer = "";
+      decoder = new StringDecoder("utf8");
       client = net.connect(SOCKET_PATH);
 
       client.on("connect", () => {
@@ -507,7 +513,7 @@ async function _connectToDaemon(): Promise<boolean> {
       });
 
       client.on("data", (chunk) => {
-        messageBuffer += chunk.toString();
+        messageBuffer += decoder ? decoder.write(chunk) : chunk.toString();
         const lines = messageBuffer.split("\n");
         messageBuffer = lines.pop() || "";
 

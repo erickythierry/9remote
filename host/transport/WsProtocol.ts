@@ -79,6 +79,10 @@ export class WsProtocol extends BaseProtocol {
     const emit = this._socket._rawEmit || this._socket.emit.bind(this._socket);
     if (channel === CHANNELS.control) {
       const { event, args = [] } = payload as ControlPayload;
+      // Real backpressure on terminal output — prevents unbounded queueing on slow
+      // (4G / tunnel) links. ProtocolManager catches the refusal and holds slices in
+      // a lossless backlog drained once the socket catches up.
+      if (event === "output" && this._backpressured()) return false;
       emit(event, ...args);
       return true;
     }

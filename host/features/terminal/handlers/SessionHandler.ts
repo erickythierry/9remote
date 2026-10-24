@@ -257,12 +257,21 @@ export function setupSessionHandlers(socket: Socket, io: Server, sessions: Map<s
     capsLogger.info("[diag] getSessions arrived (socket ready to answer)");
     try {
       const list = [];
-      // Fetch live cwd for daemon sessions (OSC 7 updates daemon-side, not agent cache)
+      // Fetch live cwd for daemon sessions (OSC 7 updates daemon-side, not agent cache).
+      // One daemon round-trip for every session instead of one per session: the old
+      // per-session getSessionCwd loop was N serial RPCs with a 5s timeout each.
       const useDaemon = PERSISTENCE_MODE === "daemon" && daemonClient.isConnected();
+      const liveCwds = new Map<string, string>();
+      if (useDaemon) {
+        const live = await daemonClient.listSessions().catch(() => []);
+        for (const entry of live) {
+          if (entry.cwd) liveCwds.set(entry.id, entry.cwd);
+        }
+      }
       for (const [id, session] of sessions) {
         let cwd = session.cwd;
         if (useDaemon && session.daemon) {
-          const liveCwd = await daemonClient.getSessionCwd(id);
+          const liveCwd = liveCwds.get(id);
           if (liveCwd) { cwd = liveCwd; if (session.cwd !== liveCwd) session.cwd = liveCwd; }
         }
         const workspaceId = sessionWorkspaces[id] || null;
@@ -630,8 +639,22 @@ export function setupSessionHandlers(socket: Socket, io: Server, sessions: Map<s
       // other output — a legacy peer gets b64 there instead of a raw Buffer.
       socket.emit("output", { sessionId, enc: "bin", data: Buffer.from(takeBufferTail(session.buffer, JOIN_REPLAY_SIZE), "utf-8") });
     }
+    // Auto-subscribe the requesting socket so joining an active terminal immediately
+    // delivers its live output without a separate subscribeSession round-trip.
+    if (sessionId) socket.data?.protocol?.subscribeOutput(sessionId);
     // Return current live seq so client can resync lastSeq after reset+replay.
     callback({ success: true, name: session.name, cwd: session.cwd, seq: currentSeq(sessionId) });
+  });
+
+  // Selective terminal output subscription — saves bandwidth and CPU on mobile/inactive tabs.
+  socket.on("subscribeSession", ({ sessionId }: { sessionId?: string } = {}) => {
+    if (!sessionId) return;
+    socket.data?.protocol?.subscribeOutput(sessionId);
+  });
+
+  socket.on("unsubscribeSession", ({ sessionId }: { sessionId?: string } = {}) => {
+    if (!sessionId) return;
+    socket.data?.protocol?.unsubscribeOutput(sessionId);
   });
 
   // Handle client capability announcement (fragOut, fragCtl) and reply with server caps.

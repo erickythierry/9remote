@@ -37,7 +37,7 @@ import {
   handleAutoStartGet, handleAutoStartPost,
   handleLocalToken, handleUpdate, setUpdateInfo, getUpdateInfo,
 } from "./api/ui.js";
-import { broadcastServerInfo, setConnectCheckHandler } from "./features/terminal/terminalSocket.js";
+import { broadcastServerInfo, setConnectCheckHandler, flushSessionMetadata } from "./features/terminal/terminalSocket.js";
 import { UPDATE, SELF_HOSTED } from "./cli/config.js";
 import { isAllowedPeer } from "./lib/trustedNetwork.js";
 import { handleOneTimeKey, handleRegenerate, handleSignalingRetry } from "./api/key.js";
@@ -526,6 +526,7 @@ export async function startServer() {
     logger.info(`🛑 Received ${signal}, shutting down gracefully...`);
     const forceExit = setTimeout(() => { logger.error("⚠️  Forced exit"); process.exit(1); }, 5000);
     try {
+      flushSessionMetadata();
       server.close(() => logger.info("✓ HTTP server closed"));
       if (viteProcess) { try { viteProcess.kill(); } catch {} }
       const io = getIO();

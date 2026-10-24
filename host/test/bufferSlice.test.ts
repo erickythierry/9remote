@@ -1,7 +1,7 @@
 // Tests for bufferSlice — ANSI-boundary-safe slicing of a chunked Buffer[].
 // Run: node agent/test/bufferSlice.test.mjs
 import assert from "node:assert/strict";
-import { takeBufferTail, takeBufferRange, scanBackForEsc, bufferTotal } from "../features/terminal/bufferSlice.js";
+import { takeBufferTail, takeBufferRange, scanBackForEsc, bufferTotal, trimBufferHead } from "../features/terminal/bufferSlice.js";
 import { WithImplicitCoercion } from "buffer";
 
 let pass = 0, fail = 0;
@@ -155,6 +155,23 @@ test("takeBufferRange handles multi-chunk", () => {
   const chunks = [buf("AAAA\x1b["), buf("38;2;10m"), buf("TEXT")];
   const r = takeBufferRange(chunks, 4, 5); // have last 4 "TEXT", want 5 before
   assert.equal(r.prefix[0], ESC, "prefix starts at ESC even across chunk boundary");
+});
+
+test("trimBufferHead drops head chunks, keeps total in sync and starts on ESC", () => {
+  const chunks = [buf("junk"), buf("\x1b[1mAAAA"), buf("\x1b[2mBBBB")];
+  const total = trimBufferHead(chunks, bufferTotal(chunks), 14);
+  assert.equal(total, bufferTotal(chunks));
+  assert.ok(total <= 14);
+  assert.equal(chunks[0][0], ESC);
+});
+
+test("trimBufferHead cuts a partial boundary chunk and is a no-op under the cap", () => {
+  const chunks = [buf("xx\x1b[1mAAAA\x1b[2mBBBB")];
+  const total = trimBufferHead(chunks, bufferTotal(chunks), 10);
+  assert.equal(total, bufferTotal(chunks));
+  assert.equal(chunks[0][0], ESC);
+  const small = [buf("abc")];
+  assert.equal(trimBufferHead(small, 3, 10), 3);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
