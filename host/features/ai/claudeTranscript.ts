@@ -288,6 +288,9 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
         event: "cli_event",
         data: { type: "system", subtype: d.subtype || "", record: slimSystemRecord(d) }
       });
+      if (d.subtype === "stop_hook_summary") {
+        push({ event: "turn_complete", data: { stats: {} } });
+      }
     } else if (d.type === "assistant" && d.message) {
       const u = d.message.usage;
       // One record per content block repeats the same message id and usage; count each API call once.

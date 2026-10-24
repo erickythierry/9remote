@@ -31,6 +31,7 @@ export interface ComposerProps {
   isTurnRunning?: boolean;
   isFocused?: boolean;
   onSend?: (text: any, opts?: any) => void;
+  onSendNow?: () => void;
   onRemoveQueueItem?: (id: any) => void;
   onClearQueue?: () => void;
   onStop?: () => void;
@@ -54,6 +55,7 @@ export const Composer = memo(function Composer({
   isTurnRunning: propTurnRunning = false,
   isFocused = false,
   onSend,
+  onSendNow,
   onRemoveQueueItem,
   onClearQueue,
   onStop,
@@ -793,18 +795,20 @@ export const Composer = memo(function Composer({
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1 shrink-0 ml-2">
-                {idx === 0 && !item.locked && (
+              <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                {idx === 0 && (
                   <button
                     type="button"
                     onClick={() => {
                       vibrate();
-                      handleStopClick();
+                      if (onSendNow) onSendNow();
+                      else handleStopClick();
                     }}
-                    className="text-text-muted hover:text-brand-400 p-1 rounded hover:bg-surface-2 transition-colors cursor-pointer"
-                    title="Send now (stops the current turn)"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-brand-500/20 hover:bg-brand-500/35 text-brand-400 font-mono text-[10px] font-medium transition-colors cursor-pointer"
+                    title="Send now (ctrl+x ctrl+s / interrupts current turn to run this)"
                   >
-                    <Send size={13} />
+                    <Send size={10} />
+                    <span>Send now</span>
                   </button>
                 )}
                 {!item.locked && (

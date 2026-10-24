@@ -248,16 +248,24 @@ export class ClaudeTerminal {
       case "enqueue":
         this.queued.push({ id: `tq-${++this.queueSeq}`, text, key, hidden: !key || text.includes("<task-notification>") });
         return;
-      case "dequeue":
-        this.queued.shift();
+      case "dequeue": {
+        const dequeued = this.queued.shift();
+        if (dequeued) {
+          const at = this.session.promptQueue.findIndex((i) => i.key === dequeued.key || echoKey(i.text) === dequeued.key);
+          if (at !== -1) this.session.promptQueue.splice(at, 1);
+        }
         return;
+      }
       case "popAll":
         this.queued = [];
+        this.session.promptQueue = this.session.promptQueue.filter((i) => !i.tui);
         return;
       case "remove": {
         const at = this.queued.findIndex((q) => q.key === key);
-        if (at === -1) return;
-        this.queued.splice(at, 1);
+        if (at !== -1) this.queued.splice(at, 1);
+        const sAt = this.session.promptQueue.findIndex((i) => i.key === key || echoKey(i.text) === key);
+        if (sAt !== -1) this.session.promptQueue.splice(sAt, 1);
+        return;
       }
     }
   }
@@ -302,6 +310,10 @@ export class ClaudeTerminal {
 
   interrupt() {
     return daemonClient.sendInput(this.session.id, INTERRUPT);
+  }
+
+  sendNow() {
+    return daemonClient.sendInput(this.session.id, "\x18\x13");
   }
 
   tick() {
@@ -403,8 +415,16 @@ export class ClaudeTerminal {
       // Attachments come in through the session's own turn-end read; a second door would draw them twice.
       if (this.muted || (ev.event === "cli_event" && ev.data?.type === "attachment")) return;
       if (ev.event === "user_message") {
+        const textKey = echoKey(String(ev.data?.text || ""));
+        const qIdx = s.promptQueue.findIndex((i) => i.key === textKey || echoKey(i.text) === textKey);
+        if (qIdx !== -1) {
+          s.promptQueue.splice(qIdx, 1);
+          s.emitQueueUpdate();
+        }
+        const tqIdx = this.queued.findIndex((q) => q.key === textKey);
+        if (tqIdx !== -1) this.queued.splice(tqIdx, 1);
         // Up to the match: a slash command never echoes as a user record, so its entry is dropped here.
-        const at = this.echoes.indexOf(echoKey(String(ev.data?.text || "")));
+        const at = this.echoes.indexOf(textKey);
         if (at !== -1) { this.echoes.splice(0, at + 1); return; }
       }
       s.emitNormalized(ev.event, ev.data);

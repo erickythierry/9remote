@@ -94,7 +94,7 @@ export const AiPaneView = memo(function AiPaneView({
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const { t } = useI18n();
 
-  const { sendPrompt, removeQueueItem, clearQueue, resolvePermission, stop, stopTask, runShell, rewindToMessage, previewRewind, listRewindPoints, escalateMode, dismissBlocked, hasOlder, loadOlder, reload, hydrating, synced, hydrateFailed } = useAiSession({
+  const { sendPrompt, sendNow, removeQueueItem, clearQueue, resolvePermission, stop, stopTask, runShell, rewindToMessage, previewRewind, listRewindPoints, escalateMode, dismissBlocked, hasOlder, loadOlder, reload, hydrating, synced, hydrateFailed } = useAiSession({
     sessionId,
     engine,
     workspacePath,
@@ -432,6 +432,7 @@ export const AiPaneView = memo(function AiPaneView({
         sessionId={sessionId}
         engine={engine}
         onSend={sendPrompt}
+        onSendNow={sendNow}
         onRemoveQueueItem={removeQueueItem}
         onClearQueue={clearQueue}
         onStop={stop}

@@ -92,7 +92,7 @@ export const AiPermissionCard = memo(function AiPermissionCard({
         </div>
       )}
 
-      <div className="flex items-center gap-2 justify-end">
+      <div className="flex flex-wrap items-center gap-2 justify-end">
         {isBash && (
           <button
             type="button"

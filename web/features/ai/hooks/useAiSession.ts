@@ -1425,6 +1425,11 @@ export function useAiSession({
     [sessionId]
   );
 
+  const sendNow = useCallback(() => {
+    const b = busRef.current;
+    b?.emit("ai:sendNow", { sessionId });
+  }, [sessionId]);
+
   const resolvePermission = useCallback(
     (requestId: string, behavior: string, message: string = "", answers: any = null, updatedInput: any = null) => {
       const b = busRef.current; // no store fallback — null (foreign bus not up) must wait, not hit the main machine
@@ -1629,6 +1634,7 @@ export function useAiSession({
     // events was lost while the carrier was up.
     reload: retryNow,
     sendPrompt,
+    sendNow,
     removeQueueItem,
     clearQueue,
     resolvePermission,

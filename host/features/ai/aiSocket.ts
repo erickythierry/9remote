@@ -469,6 +469,17 @@ export function setupAiHandlers(socket: any, io: any, manager: AiManager = globa
     }
   });
 
+  socket.on(AI_SOCKET_EVENTS.SEND_NOW, ({ sessionId }: any, cb?: (res: any) => void) => {
+    try {
+      const session = manager.getSession(sessionId);
+      if (!session) throw new Error(`AI session not found: ${sessionId}`);
+      session.sendNow?.();
+      cb?.({ ok: true });
+    } catch (err: any) {
+      cb?.({ ok: false, error: err.message });
+    }
+  });
+
   socket.on(AI_SOCKET_EVENTS.PERMISSION, async ({ sessionId, requestId, behavior, message, updatedInput }: any, cb: (res: any) => void) => {
     try {
       const session = manager.getSession(sessionId);

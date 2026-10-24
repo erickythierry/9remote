@@ -130,8 +130,8 @@ export function describeLive({
     }
   }
 
-  if (lastMsg?.thinking) return { verb: "Thinking", detail: clip(lastLine(lastMsg.thinking), MAX_DETAIL), tone: "wait" };
-  if (lastMsg?.content) return { verb: "Writing", detail: clip(lastLine(lastMsg.content), MAX_DETAIL), tone: "wait" };
+  if (lastMsg?.role === "assistant" && lastMsg?.thinking) return { verb: "Thinking", detail: clip(lastLine(lastMsg.thinking), MAX_DETAIL), tone: "wait" };
+  if (lastMsg?.role === "assistant" && lastMsg?.content) return { verb: "Writing", detail: clip(lastLine(lastMsg.content), MAX_DETAIL), tone: "wait" };
   return { verb: "Working", detail: "", tone: "wait" };
 }
 

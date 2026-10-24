@@ -1457,6 +1457,14 @@ export class AiSession {
     });
   }
 
+  sendNow() {
+    if (this.terminal) {
+      this.terminal.sendNow();
+      return true;
+    }
+    return this.stop();
+  }
+
   stop() {
     if (this.terminal) {
       if (!this.terminal.interrupt()) return false;

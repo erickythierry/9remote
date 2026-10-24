@@ -69,7 +69,7 @@ const buildCurlCmd = (type: string, tool: string, { sessionId = false } = {}) =>
   const key = sessionId ? hookSessionIdKeys(tool)[0] : null;
   const prefix = key ? `csid=$(cat 2>/dev/null | sed -n 's/.*"${key}" *: *"\\([^"]*\\)".*/\\1/p'); ` : "";
   const extra = key ? "&csid=$csid" : "";
-  return `${prefix}command -v curl >/dev/null 2>&1 && curl -s --connect-timeout 1 --max-time 2 "${NOTIFY_URL}?type=${type}&sessionId=$NINE_REMOTE_SESSION_ID${extra}&tool=${tool}" > /dev/null 2>&1 & true`;
+  return `${prefix}command -v curl >/dev/null 2>&1 && curl -s --connect-timeout 1 --max-time 2 "${NOTIFY_URL}?type=${type}&sessionId=$NINE_REMOTE_SESSION_ID${extra}&tool=${tool}" > /dev/null 2>&1 || true`;
 };
 
 // Legacy config-dir fallback for the original four tools (binary-on-PATH is the primary check)
@@ -622,7 +622,7 @@ const TOOL_REGISTRY: Record<string, ToolHook> = {
       PreCompact: "working", PostCompact: "working",
       Elicitation: "blocked",
     },
-    (ms) => ms,
+    SEC,
     {
       matchers: { Notification: "permission_prompt" },
       extra: applyClaudeEnv,
