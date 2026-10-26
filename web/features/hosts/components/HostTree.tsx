@@ -7,6 +7,7 @@ import {
 } from "@/shared/components/ui/Icon";
 import { vibrate } from "@/shared/utils/vibration";
 import { useI18n } from "@/shared/i18n";
+import { IS_SELF_HOSTED } from "@/shared/constants/API";
 import { useFleetStore } from "@/shared/stores/fleetStore";
 import { useNotificationStore } from "@/shared/stores/notificationStore";
 import { connOf } from "@/shared/transport/hostConn";
@@ -196,7 +197,7 @@ export default function HostTree({
         </div>
       ) : open && expandable && (
         <div className={treeCls}>
-          {(host as any).updateAvailable && (host as any).canSelfUpdate && !(host as any).approval && (
+          {!IS_SELF_HOSTED && (host as any).updateAvailable && (host as any).canSelfUpdate && !(host as any).approval && (
             <button
               type="button"
               onClick={() => { vibrate(); setUpdateConfirm(true); }}
