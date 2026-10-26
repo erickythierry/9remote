@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Terminal, Bot, Sparkles, Zap, Check, History, CornerDownLeft, Plus, Loader2, Globe, Trash2 } from "@/shared/components/ui/Icon";
+import { X, Terminal, Bot, Sparkles, Zap, Check, History, CornerDownLeft, Plus, Loader2, Globe, Trash2, Folder } from "@/shared/components/ui/Icon";
 import { vibrate } from "@/shared/utils/vibration";
 import { useI18n } from "@/shared/i18n";
 import transliterate from "@sindresorhus/transliterate";
@@ -18,6 +18,7 @@ import FolderPickerModal from "@/features/terminal/components/FolderPickerModal"
 import { AI_UI_OPTIONS } from "@/features/ai/constants";
 import { connOf } from "@/shared/transport/hostConn";
 import { useBrowserStore } from "@/shared/stores/browserStore";
+import { useFileManagerStore } from "@/shared/stores/fileManagerStore";
 import { useTerminalStore } from "@/shared/stores/terminalStore";
 import { useFleetStore } from "@/shared/stores/fleetStore";
 
@@ -67,6 +68,7 @@ export interface NewTerminalModalProps {
   connected?: boolean;
   hostKey?: string;
   onCreateBrowser?: () => void;
+  onCreateFileManager?: (path: string, name?: string | null) => void;
   workspaceId?: string | null;
 }
 
@@ -75,7 +77,7 @@ export default function NewTerminalModal({
   workspacePath = null, workspaceName = "", fileBus = null, homeDir = null,
   onResumeAgentSession = null, liveSessionIds = null, activeSessionId = null,
   onSelectSession = null, connected = true, hostKey = "main",
-  onCreateBrowser = undefined, workspaceId = null
+  onCreateBrowser = undefined, onCreateFileManager = undefined, workspaceId = null
 }: NewTerminalModalProps) {
   const { t } = useI18n();
   // One door: file API + cache scope resolve from the host this modal creates on —
@@ -213,43 +215,13 @@ export default function NewTerminalModal({
   // CLI-only agents (no UI variant at all)
   const cliOnly = allAgents.filter((a) => !a.isAiUi && !pairBases.has(a.id) && a.id !== "claude");
 
-  // Browser rides the plain-terminal row's right slot. BUILT IN: the modal
-  // opens a tab in the workspace's own Chrome window itself, so every caller
-  // gets the option for free (pass onCreateBrowser to override, null to hide).
-  const pushView = useTerminalStore((s) => s.pushView);
-  const defaultCreateBrowser = () => {
-    const wsKey = workspaceId ?? "default";
-    const st = useBrowserStore.getState();
-    const windowId = st.workspaceWindows[wsKey] || null;
-    busRef?.current?.emit?.("browser:invoke", {
-      action: "open",
-      payload: {
-        url: "about:blank",
-        profile: st.workspaceProfiles[wsKey] || "default",
-        // First browser tab of this workspace gets its own Chrome window;
-        // afterwards "+" adds tabs INTO that window.
-        newWindow: !windowId,
-        windowId: windowId || undefined
-      }
-    }, (res: any) => {
-      if (!res?.ok || !res.id) return;
-      const after = useBrowserStore.getState();
-      if (res.windowId && res.windowId !== after.workspaceWindows[wsKey]) after.setWindowFor(wsKey, res.windowId);
-      after.setActive(wsKey, res.id);
-      const cur = after.tabsByWorkspace[wsKey] || [];
-      if (!cur.some((tb) => tb.id === res.id)) {
-        after.setTabs(wsKey, [...cur, { id: res.id, url: "about:blank", title: "" }]);
-      }
-    });
-    pushView({ type: "browser" });
-  };
-  const browserAction = onCreateBrowser !== undefined ? onCreateBrowser : (connected ? defaultCreateBrowser : null);
-  const browserOpt = browserAction ? { id: "browser", isBrowser: true, label: t("sites.browserTab") } : null;
-  const agent = (agentId && allAgents.find((a) => a.id === agentId)) || (agentId === "browser" ? browserOpt : null) || null;
+  // Files / File Manager rides the plain-terminal row's right slot (replacing browser).
+  const filesOpt = { id: "files", isFiles: true, label: t("workspaces.tabFiles") };
+  const agent = (agentId && allAgents.find((a) => a.id === agentId)) || (agentId === "files" ? filesOpt : null) || null;
   // Slot 0: Plain terminal (row 1 left)
-  // Slot 1: Browser (row 1 right), or the spacer that keeps pairs aligned on the same row
+  // Slot 1: Files / File Manager (row 1 right)
   // Slot 2+: Claude CLI, Claude UI, then pairs CLI→UI, then CLI-only
-  const options = [null, browserOpt || { empty: true }, ...(claudeCli ? [claudeCli] : []), ...(claudeUi ? [claudeUi] : []), ...sortedPairs, ...cliOnly];
+  const options = [null, filesOpt, ...(claudeCli ? [claudeCli] : []), ...(claudeUi ? [claudeUi] : []), ...sortedPairs, ...cliOnly];
   const canSkip = !agent?.isAiUi && canSkipPermissions(agent);
   // The agent's own skip-mode token, e.g. --yolo / GOOSE_MODE=auto — null for plain shells
   const skipFlag = agent?.yolo
@@ -310,9 +282,47 @@ export default function NewTerminalModal({
 
   const submit = (picked = agent) => {
     vibrate();
-    // Browser is not a terminal launch — it raises the browser pane, nothing else.
+    // Files / File Manager opens a file manager tab in the workspace
+    if (picked?.isFiles) {
+      const finalizeFiles = (effCwd?: string | null) => {
+        const targetPath = effCwd || workspacePath || homeDir || "";
+        const suffix = suggestIndex ? ` ${suggestIndex}` : "";
+        const customTitle = name.trim() || (stagedWorktree ? stagedWorktree.branch : null);
+        if (onCreateFileManager) {
+          onCreateFileManager(targetPath, customTitle);
+        } else {
+          const wsKey = workspaceId ?? "default";
+          useFileManagerStore.getState().addTab(wsKey, targetPath, customTitle);
+        }
+        onClose?.();
+      };
+      if (!stagedWorktree) return finalizeFiles(cwd);
+      if (!modalFileBus?.gitWorktreeAdd) {
+        setWtError("This agent version does not support worktrees");
+        setWtOpen(true);
+        return;
+      }
+      setWtBusy(true);
+      setWtError(null);
+      modalFileBus.gitWorktreeAdd(stagedWorktree.repo, stagedWorktree.path, stagedWorktree.branch, true)
+        .then((res: any) => {
+          setWtBusy(false);
+          if (!res?.success) {
+            setWtError(res?.error || "Failed to create worktree");
+            setWtOpen(true);
+            return;
+          }
+          finalizeFiles(res.path || stagedWorktree.path);
+        })
+        .catch((err: any) => {
+          setWtBusy(false);
+          setWtError(err?.message || "Failed to create worktree");
+          setWtOpen(true);
+        });
+      return;
+    }
+    // Browser fallback if invoked externally
     if (picked?.isBrowser) {
-      browserAction?.();
       onClose?.();
       return;
     }
@@ -568,7 +578,7 @@ export default function NewTerminalModal({
                   active ? "modal-row-active text-text" : "text-text-muted hover:text-text"
                 }`}
               >
-                {a?.isBrowser ? <Globe size={16} className="text-text" /> : <AgentAvatar agent={a} />}
+                {a?.isFiles ? <Folder size={16} className="text-brand-500" /> : a?.isBrowser ? <Globe size={16} className="text-text" /> : <AgentAvatar agent={a} />}
                 <span className="flex-1 text-sm font-medium truncate">{a ? a.label : t("terminal.plainShell")}</span>
                 {active && (
                   <>

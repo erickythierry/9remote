@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ChevronLeft, ChevronRight, Menu, PanelLeft, PanelRight, Settings, Monitor, Smartphone, Plus, Pencil, Trash2, X, Globe, RotateCw, Github, Star, Bot, Zap, Check, Image as ImageIcon, Sparkles, Maximize2, Minimize2, Eye, EyeOff, Columns2, Link2, Loader2, MessageSquare, Terminal
+  ChevronLeft, ChevronRight, Menu, PanelLeft, PanelRight, Settings, Monitor, Smartphone, Plus, Pencil, Trash2, X, Globe, RotateCw, Github, Star, Bot, Zap, Check, Image as ImageIcon, Sparkles, Maximize2, Minimize2, Eye, EyeOff, Columns2, Link2, Loader2, MessageSquare, Terminal, Folder
 } from "@/shared/components/ui/Icon";
 import NotificationsBell from "./NotificationsBell";
 import SessionStatusBadge from "./SessionStatusBadge";
@@ -10,6 +10,7 @@ import { vibrate } from "@/shared/utils/vibration";
 import { useSlideMenuStore } from "@/shared/stores/slideMenuStore";
 import { useTerminalStore } from "@/shared/stores/terminalStore";
 import { useBrowserStore } from "@/shared/stores/browserStore";
+import { useFileManagerStore } from "@/shared/stores/fileManagerStore";
 
 // Stable fallbacks: a fresh [] / {} per selector call is a new getSnapshot every
 // render — React reads that as "store changed" and loops to max update depth.
@@ -151,6 +152,8 @@ function TerminalHeader({
   // Browser tabs belong to this workspace like terminal tabs do: the strip
   // shows only ITS Chrome window of the workspace's profile.
   const wsKey = activeWorkspaceId ?? "default";
+  const fileManagerTabs = useFileManagerStore((s) => s.tabsByWorkspace[wsKey] ?? NO_TABS);
+  const activeFileManagerTabId = useFileManagerStore((s) => s.activeByWorkspace[wsKey] || null);
   const wsBrowserProfile = useBrowserStore((s) => s.workspaceProfiles[wsKey] || "default");
   const wsWindowId = useBrowserStore((s) => s.workspaceWindows[wsKey] || null);
   const browserTabs = useBrowserStore((s) => s.tabsByWorkspace[wsKey] ?? NO_TABS);
@@ -252,6 +255,7 @@ function TerminalHeader({
   // press only becomes a drag past the threshold; below it the tab still switches.
   const selectTab = (sessionId: string) => {
     vibrate();
+    useFileManagerStore.getState().setActive(wsKey, null);
     if (hiddenPaneSessionIds.includes(sessionId)) unhidePane(sessionId);
     onSwitchSession?.(sessionId);
   };
@@ -516,7 +520,7 @@ function TerminalHeader({
       <div ref={tabsContainerRef} className="flex-1 overflow-auto overflow-x-auto overflow-y-hidden scrollbar-none h-full">
         <div className="flex gap-0 min-w-max items-stretch h-full">
           {sessions.map((session) => {
-            const isActiveTab = session.id === activeSessionId && !isBrowserView;
+            const isActiveTab = session.id === activeSessionId && !isBrowserView && !activeFileManagerTabId;
             const isHidden = hiddenPaneSessionIds.includes(session.id);
             const st = sessionStatus[session.id]?.state || "idle";
             const v = statusVisual(st);
@@ -614,6 +618,48 @@ function TerminalHeader({
                     <EyeOff size={13} />
                   </button>
                 )}
+              </div>
+            );
+          })}
+          {/* File Manager tabs */}
+          {fileManagerTabs.map((tab) => {
+            const isActive = activeFileManagerTabId === tab.id;
+            return (
+              <div
+                key={tab.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  vibrate();
+                  useFileManagerStore.getState().setActive(wsKey, tab.id);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    useFileManagerStore.getState().setActive(wsKey, tab.id);
+                  }
+                }}
+                className={`term-tab group relative px-1.5 sm:px-2.5 text-xs font-medium flex items-center gap-1 sm:gap-2 whitespace-nowrap h-full cursor-pointer select-none touch-manipulation touch-pan-x ${
+                  isActive ? "term-tab-active" : ""
+                }`}
+              >
+                <div className="w-3.5 h-3.5 flex items-center justify-center shrink-0">
+                  <Folder size={13} className="w-3.5 h-3.5 text-brand-500 sm:group-hover:hidden" />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      vibrate();
+                      useFileManagerStore.getState().removeTab(wsKey, tab.id);
+                    }}
+                    className="hidden w-full h-full p-0.5 rounded text-text hover:bg-text/15 sm:group-hover:flex items-center justify-center transition-colors"
+                    title={t("common.close")}
+                  >
+                    <X size={11} strokeWidth={2.4} />
+                  </button>
+                </div>
+                <span className="truncate max-w-[90px] sm:max-w-[140px]" data-tip={tab.title}>
+                  {tab.title}
+                </span>
               </div>
             );
           })}

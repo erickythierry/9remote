@@ -54,6 +54,9 @@ import RemoteDesktop from "@/features/remote/components/RemoteDesktop";
 import MobileMirror from "@/features/mobile/components/MobileMirror";
 import BrowserPane from "@/features/browser/components/BrowserPane";
 import { useBrowserStore } from "@/shared/stores/browserStore";
+import SvarFileManager from "@/features/fileExplorer/components/SvarFileManager";
+import { useFileManagerStore } from "@/shared/stores/fileManagerStore";
+const NO_FILE_MANAGER_TABS: never[] = [];
 import WorkspaceList from "@/features/fileExplorer/components/WorkspaceList";
 import AgentDashboardView from "@/features/session/components/AgentDashboardView";
 import FileExplorer from "@/features/fileExplorer/components/FileExplorer";
@@ -385,7 +388,11 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
   const browserViewActive = currentView?.type === "browser";
   // Which Chrome this workspace browses with — the pane, strip and every
   // invoke resolve from this one map entry.
-  const browserProfile = useBrowserStore((s) => s.workspaceProfiles[activeWorkspaceId ?? "default"] || "default");
+  const wsKey = activeWorkspaceId ?? "default";
+  const fileManagerTabs = useFileManagerStore((s) => s.tabsByWorkspace[wsKey] ?? NO_FILE_MANAGER_TABS);
+  const activeFileManagerTabId = useFileManagerStore((s) => s.activeByWorkspace[wsKey]);
+  const activeFileManagerTab = fileManagerTabs.find((t) => t.id === activeFileManagerTabId);
+  const browserProfile = useBrowserStore((s) => s.workspaceProfiles[wsKey] || "default");
   // At the bottom of the desktop stack no session is named yet, so fall back to the last
   // one opened — otherwise the shell renders with nothing focused.
   const activeSessionId = currentView?.type === "terminal"
@@ -937,6 +944,14 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
             isDesktop={isDesktop}
             isTerminalView={isTerminalView}
             pairDashboard={isDesktop && currentView?.type === "pair" ? <AgentDashboardView /> : null}
+            fileManagerPanel={activeFileManagerTab ? (
+              <SvarFileManager
+                key={activeFileManagerTab.id}
+                initialPath={activeFileManagerTab.path}
+                fileBus={fileBus}
+                onOpenFile={handleOpenFile}
+              />
+            ) : null}
             browserPanel={browserViewActive ? (
               <BrowserPane
                 busRef={currentView.hostKey ? connOf(currentView.hostKey).busRef : busRef}

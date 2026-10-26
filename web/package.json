@@ -47,6 +47,7 @@
     "@google/genai": "^2.23.0",
     "@next/third-parties": "^16.2.9",
     "@sindresorhus/transliterate": "^2.3.1",
+    "@svar-ui/react-filemanager": "^2.6.0",
     "@xterm/addon-clipboard": "^0.2.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-image": "^0.9.0",

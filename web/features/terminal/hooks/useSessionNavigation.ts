@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useI18n } from "@/shared/i18n";
 import { sessionWorkspaceId } from "@/features/terminal/lib/paneLayout";
 import { useTerminalStore } from "@/shared/stores/terminalStore";
+import { useFileManagerStore } from "@/shared/stores/fileManagerStore";
 import { useNotificationStore } from "@/shared/stores/notificationStore";
 import { useFleetStore } from "@/shared/stores/fleetStore";
 import { makeFleetActions } from "@/features/hosts/lib/fleetActions";
@@ -89,6 +90,7 @@ export function useSessionNavigation({
     if (!selected && pendingWorkspaceId === undefined) return;
     const workspaceId = (selected ? sessionWorkspaceId(selected) : pendingWorkspaceId) ?? null;
     setActiveWorkspaceId(workspaceId);
+    useFileManagerStore.getState().setActive(workspaceId ?? "default", null);
     const ids = workspaceSessionIds(workspaceId);
     ids.forEach(id => addOpenedSession(id));
     addOpenedSession(sessionId);
