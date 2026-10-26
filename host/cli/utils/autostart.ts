@@ -12,12 +12,21 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { PATHS as APP_PATHS, PACKAGE_NAME } from "../../lib/constants.js";
+import { SELF_HOSTED } from "../config.js";
 
 const AUTOSTART_LOG = join(APP_PATHS.LOGS, "autostart.log");
 
 const APP_ID = "cc.9remote.agent";
 const APP_NAME = "9Remote";
 const AUTOSTART_ARGS = ["--tray", "--skip-update", "--start"];
+
+// Without these the autostarted host boots in upstream mode and /api/connect answers 403.
+const SELF_HOSTED_ENV_KEYS = ["NREMOTE_SELF_HOSTED", "NREMOTE_TRUSTED_CIDRS", "NREMOTE_PUBLIC_ORIGIN"];
+
+function selfHostedEnv(): string[] {
+  if (!SELF_HOSTED) return [];
+  return SELF_HOSTED_ENV_KEYS.filter((k) => process.env[k]).map((k) => `${k}=${process.env[k]}`);
+}
 
 const HOME = os.homedir();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -213,7 +222,9 @@ function isEnabledWin() {
 // ── Linux ─────────────────────────────────────────────────────────────────────
 
 function buildDesktopFile() {
-  const exec = `${getNodeBin()} ${getCliEntry()} ${AUTOSTART_ARGS.join(" ")}`;
+  const env = selfHostedEnv();
+  const envPrefix = env.length ? `env ${env.join(" ")} ` : "";
+  const exec = `${envPrefix}${getNodeBin()} ${getCliEntry()} ${AUTOSTART_ARGS.join(" ")}`;
   return `[Desktop Entry]
 Type=Application
 Name=${APP_NAME}
@@ -238,7 +249,7 @@ Restart=always
 RestartSec=10
 Environment=PATH=${getLaunchPath()}
 Environment=HOME=${HOME}
-StandardOutput=append:${AUTOSTART_LOG}
+${selfHostedEnv().map((e) => `Environment=${e}\n`).join("")}StandardOutput=append:${AUTOSTART_LOG}
 StandardError=append:${AUTOSTART_LOG}
 
 [Install]
