@@ -124,6 +124,8 @@ export class ClaudeTerminal {
   questions = new Map<string, (answer: any) => void>();
   // Last conversation id the hooks reported; only a NEW one moves the chat (a /clear must not snap back).
   followed: string | null = null;
+  // A working status older than the last turn end is that turn's leftover (done waits out DONE_DEBOUNCE_MS).
+  turnEndedAt = 0;
   booting: Promise<void> | null = null;
 
   constructor(session: AiSession) {
@@ -330,7 +332,8 @@ export class ClaudeTerminal {
       this.file = null;
     }
     // A prompt typed in the terminal starts a turn the chat did not send.
-    if (!s.isTurnRunning && getStatus(s.id)?.state === "working") {
+    const status = getStatus(s.id);
+    if (!s.isTurnRunning && status?.state === "working" && status.since > this.turnEndedAt) {
       s.isTurnRunning = true;
       s.turnStartedAt = Date.now();
     }
@@ -416,6 +419,7 @@ export class ClaudeTerminal {
       this.trackShell(ev);
       // Attachments come in through the session's own turn-end read; a second door would draw them twice.
       if (this.muted || (ev.event === "cli_event" && ev.data?.type === "attachment")) return;
+      if (ev.event === "turn_complete") this.turnEndedAt = Date.now();
       if (ev.event === "user_message") {
         const textKey = echoKey(String(ev.data?.text || ""));
         const qIdx = (s.promptQueue || []).findIndex((i) => i.key === textKey || echoKey(i.text) === textKey);
