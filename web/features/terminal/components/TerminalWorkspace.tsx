@@ -136,6 +136,7 @@ export interface TerminalWorkspaceProps {
   onOpenArtifact?: (sessionId: string, filePath: string) => void;
   fileBus?: any;
   browserPanel?: React.ReactNode;
+  browserVisible?: boolean;
   fileManagerPanel?: React.ReactNode;
   onCreateAnyHost?: (...args: any[]) => void;
   onQuickCreateHostAware?: (...args: any[]) => void;
@@ -166,6 +167,7 @@ function TerminalWorkspace({
   rightPanel, editorPanel, mobilePanel, onOpenArtifact, fileBus,
   browserPanel = null,
   fileManagerPanel = null,
+  browserVisible = true,
   onCreateAnyHost, onQuickCreateHostAware,
   tunnelUrl, apiKey, connectionMode,
   onResumeAgentSessionForeign = null,
@@ -319,7 +321,8 @@ function TerminalWorkspace({
   // Exactly one host and no workspace: show the two-half poster stage (workspace/remote).
   // Multi-host skips this stage so the user sees the fleet instead.
   const fleetHostCount = useFleetStore((s) => Object.keys(s.hosts).length);
-  const showWelcomeStage = showEmptyState && !workspaces.length && fleetHostCount <= 1;
+  // A browser on top wins: its pane lives in the panes container this stage replaces.
+  const showWelcomeStage = showEmptyState && !workspaces.length && fleetHostCount <= 1 && !(browserPanel && browserVisible);
 
   // The collapsed panel stays mounted so its width can animate, but only after a first
   // open — otherwise a user who never opens it still pays for the tree and git scan.
@@ -620,11 +623,14 @@ function TerminalWorkspace({
   // shell keeps its header/sidebar while it is up.
   const browserActive = !!browserPanel;
   const fileManagerActive = !!fileManagerPanel;
+  // Mounted ≠ on top: the pane outlives its view (keep-mounted), so parking and
+  // pane-hiding must follow the VIEW state, not the mount state.
+  const browserOnTop = browserActive && browserVisible;
 
   return (
     // Park LEFT when hidden: translate-x-full made the overflow:hidden container horizontally pannable on iOS, leaving the session list stuck shifted left; the negative side creates no scrollable extent.
     <div
-      className={`absolute inset-0 flex flex-col ${isTerminalView || browserActive || fileManagerActive || pairDashboard || welcomeActive ? "translate-x-0 opacity-100 z-10" : "-translate-x-full opacity-0 z-0 pointer-events-none"}`}
+      className={`absolute inset-0 flex flex-col ${isTerminalView || browserOnTop || fileManagerActive || pairDashboard || welcomeActive ? "translate-x-0 opacity-100 z-10" : "-translate-x-full opacity-0 z-0 pointer-events-none"}`}
     >
       <div ref={rowRef} className={`flex-1 min-h-0 relative ${isDesktop ? "flex flex-row" : "flex flex-col"}`}>
         {isDesktop && (
@@ -777,8 +783,10 @@ function TerminalWorkspace({
               onSwitch: nav.handleSelectSession
             })}
           >
+            {/* display:none keeps the pane (and its canvas) alive while another
+                tab is focused — the pane pauses its stream when not visible. */}
             {browserActive && (
-              <div className="absolute inset-0 z-10">{browserPanel}</div>
+              <div className={`absolute inset-0 z-10 ${browserVisible ? "" : "hidden"}`}>{browserPanel}</div>
             )}
             {fileManagerActive && (
               <div className="absolute inset-0 z-10">{fileManagerPanel}</div>
@@ -800,7 +808,7 @@ function TerminalWorkspace({
                   key={sessionId}
                   ref={(el) => registerPaneElement(sessionId, el)}
                   className={
-                    browserActive || fileManagerActive || !inActiveWorkspace || (isDesktop && fullMode && !isFocused) || (isDesktop && isHidden)
+                    browserOnTop || fileManagerActive || !inActiveWorkspace || (isDesktop && fullMode && !isFocused) || (isDesktop && isHidden)
                       ? "hidden"
                       : isDesktop
                       ? `h-full relative bg-bg ${hostUpdating ? "opacity-50 pointer-events-none" : ""} ${fullMode ? "w-full flex-1" : `border-r-2 border-border-subtle last:border-r-0 ${isPaneResizing ? "" : "transition-[width] duration-200 ease-out"}`}`

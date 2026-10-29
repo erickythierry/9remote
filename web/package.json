@@ -3,8 +3,8 @@
   "version": "2.4.0",
   "type": "module",
   "scripts": {
-    "predev": "npm run build:browser-assets && pkill -f 'workerd.*9remote' 2>/dev/null; true",
-    "dev": "next dev --webpack -H ::",
+    "predev": "npm run build:browser-assets && node scripts/patchIos15Regex.mjs; pkill -f 'workerd.*9remote' 2>/dev/null; true",
+    "dev": "next dev --webpack -H :: -p 2200",
     "build": "NODE_ENV=production next build --webpack",
     "build:static": "node ../scripts/buildWebStatic.mjs",
     "build:cf": "npm run build && NODE_ENV=production opennextjs-cloudflare build && node scripts/injectSignalingDO.mjs && node scripts/injectHotRoutes.mjs && node scripts/injectScheduled.mjs",
@@ -15,7 +15,7 @@
     "test": "node ../scripts/runTests.mjs web",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.service-worker.json",
     "build:browser-assets": "node scripts/buildBrowserAssets.mjs",
-    "prebuild": "npm run build:browser-assets"
+    "prebuild": "npm run build:browser-assets && node scripts/patchIos15Regex.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
@@ -78,6 +78,13 @@
     "xlsx": "^0.18.5",
     "zustand": "^5.0.10"
   },
+  "browserslist": [
+    "chrome >= 111",
+    "edge >= 111",
+    "firefox >= 111",
+    "safari >= 15",
+    "ios >= 15"
+  ],
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241218.0",
     "@fontsource/inter": "^5.3.0",

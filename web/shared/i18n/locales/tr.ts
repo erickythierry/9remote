@@ -493,6 +493,8 @@ export default {
         backToLogin: "Girişe Dön",
         failed: "Bağlantı Başarısız",
         failedDescription: "{n} denemeden sonra bağlanılamadı",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "Deneme {n}/{total}",
         exit: "Çık",
         cancel: "İptal",

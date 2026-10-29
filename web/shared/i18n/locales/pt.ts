@@ -520,6 +520,8 @@ export default {
         backToLogin: "Voltar ao Login",
         failed: "Falha na Conexão",
         failedDescription: "Não foi possível conectar após {n} tentativas",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "Tentativa {n} de {total}",
         exit: "Sair",
         cancel: "Cancelar",

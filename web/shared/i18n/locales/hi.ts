@@ -596,6 +596,8 @@ export default {
         backToLogin: "लॉगिन पर वापस",
         failed: "कनेक्शन विफल",
         failedDescription: "{n} प्रयासों के बाद कनेक्ट करने में असमर्थ",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "{total} में से प्रयास {n}",
         exit: "बाहर निकलें",
         cancel: "रद्द करें",

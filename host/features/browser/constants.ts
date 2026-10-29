@@ -74,7 +74,7 @@ export function getProfilesDir() {
   return process.env.NREMOTE_BROWSER_PROFILES_DIR || path.join(os.homedir(), ".9remote", "browser-profiles");
 }
 
-interface KeyDefinition { key: string; code: string; windowsVirtualKeyCode: number; text?: string }
+export interface KeyDefinition { key: string; code: string; windowsVirtualKeyCode: number; text?: string }
 export const KEY_DEFINITIONS: Record<string, KeyDefinition> = {
   enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
   tab: { key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, text: "\t" },
@@ -91,3 +91,14 @@ export const KEY_DEFINITIONS: Record<string, KeyDefinition> = {
   pagedown: { key: "PageDown", code: "PageDown", windowsVirtualKeyCode: 34 },
   space: { key: " ", code: "Space", windowsVirtualKeyCode: 32, text: " " }
 };
+for (let i = 1; i <= 12; i++) KEY_DEFINITIONS[`f${i}`] = { key: `F${i}`, code: `F${i}`, windowsVirtualKeyCode: 111 + i };
+KEY_DEFINITIONS.insert = { key: "Insert", code: "Insert", windowsVirtualKeyCode: 45 };
+
+// Remote-desktop (robotjs) key names → KEY_DEFINITIONS ids.
+export const KEY_ALIASES: Record<string, string> = { up: "arrowup", down: "arrowdown", left: "arrowleft", right: "arrowright", return: "enter", esc: "escape" };
+
+// CDP Input modifier bitmask.
+export const CDP_MODIFIER_BITS: Record<string, number> = { alt: 1, control: 2, ctrl: 2, command: 4, meta: 4, shift: 8 };
+// Chord letter → Chrome editing command (CDP does not run shortcuts by itself).
+export const EDIT_COMMANDS: Record<string, string> = { a: "selectAll", c: "copy", x: "cut", v: "paste", z: "undo", y: "redo" };
+export const STREAM_CLIPBOARD_MAX_CHARS = 20000;

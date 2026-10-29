@@ -10,6 +10,7 @@ import { GA_ID } from "@/shared/constants/analytics";
 import RotateOverlay from "@/shared/components/ui/RotateOverlay";
 import AppUpdateGate from "@/shared/components/ui/AppUpdateGate";
 import ScriptOnce from "@/shared/components/ui/ScriptOnce";
+import { legacySafariPolyfill } from "@/shared/polyfills/legacySafari";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -85,6 +86,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {/* ScriptOnce: theme-init still runs before paint (SSR HTML), no React 19 script warning */}
+        <ScriptOnce id="legacy-safari-polyfill" html={legacySafariPolyfill} />
         <ScriptOnce id="expo-redirect" html={expoRedirectScript} />
         <ScriptOnce id="theme-init" html={themeInitScript} />
         <ScriptOnce id="safe-area-bridge" html={safeAreaScript} />

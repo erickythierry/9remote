@@ -571,6 +571,8 @@ export default {
         backToLogin: "Quay lại Đăng nhập",
         failed: "Kết nối thất bại",
         failedDescription: "Không thể kết nối sau {n} lần thử",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "Lần {n} / {total}",
         exit: "Thoát",
         cancel: "Hủy",

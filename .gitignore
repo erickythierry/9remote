@@ -127,3 +127,4 @@ web/.staticBuild/
 # Local-only
 mise.toml
 APK_ANALYSIS.md
+.claude/skills/*

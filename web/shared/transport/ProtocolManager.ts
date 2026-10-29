@@ -327,6 +327,7 @@ export class ProtocolManager implements ProtocolManagerContext {
     };
     if (adapterId === "ws") {
       ctx.onRetryStatus = this._wsCallbacks.onRetryStatus;
+      ctx.onHostOffline = this._wsCallbacks.onHostOffline;
       ctx.onUrlUpdate = (upd: { tunnelUrl?: string; localIp?: string | null }) => {
         if (upd.tunnelUrl) this._auth.tunnelUrl = upd.tunnelUrl;
         if (upd.localIp !== undefined) this._auth.localIp = upd.localIp;

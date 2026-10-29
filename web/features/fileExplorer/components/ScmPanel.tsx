@@ -23,6 +23,7 @@ import useIsTouch from "@/shared/hooks/useIsTouch";
 import {
   GIT_STATUS_COLORS,
   GIT_REFRESH_EVENT,
+  GIT_AUTO_REFRESH_EVENTS,
   GIT_POLL_MS,
   makeDiffPath,
   makeRepoDiffPath
@@ -224,16 +225,10 @@ export default function ScmPanel({
   // Auto-refresh when files saved/created/deleted/renamed elsewhere
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handler = () => reload({ silent: true });
-    const events = [
-      "fileExplorer:fileSaved",
-      "fileExplorer:fileCreated",
-      "fileExplorer:fileDeleted",
-      "fileExplorer:fileRenamed",
-      GIT_REFRESH_EVENT
-    ];
-    events.forEach((ev) => window.addEventListener(ev, handler));
-    return () => events.forEach((ev) => window.removeEventListener(ev, handler));
+    // The refresh broadcast is a click: show the spinner. File events stay silent.
+    const handler = (ev: Event) => reload({ silent: ev.type !== GIT_REFRESH_EVENT });
+    GIT_AUTO_REFRESH_EVENTS.forEach((ev) => window.addEventListener(ev, handler));
+    return () => GIT_AUTO_REFRESH_EVENTS.forEach((ev) => window.removeEventListener(ev, handler));
   }, [reload]);
 
   const { changes, untracked } = useMemo(() => {
@@ -546,10 +541,9 @@ export default function ScmPanel({
           <button
             type="button"
             title={t("common.refresh")}
-            onClick={() => {
-              vibrate();
-              reload();
-            }}
+            // Broadcast instead of calling reload() directly: the listener above reloads
+            // this list and every open diff tab refetches too.
+            onClick={() => { vibrate(); window.dispatchEvent(new Event(GIT_REFRESH_EVENT)); }}
             className="p-1 text-text-muted hover:text-text"
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : ""} />

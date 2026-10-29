@@ -493,6 +493,8 @@ export default {
         backToLogin: "로그인으로 돌아가기",
         failed: "연결 실패",
         failedDescription: "{n}회 시도 후 연결할 수 없습니다",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "{total}회 중 {n}회 시도",
         exit: "종료",
         cancel: "취소",

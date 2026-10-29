@@ -1,7 +1,7 @@
 import { loadNative } from "./nativeSelfHeal.js";
 import { BaseProtocol } from "./BaseProtocol.js";
 import { encode, decode, decodeFrame, encodeFragments, createReassembler } from "./codec.js";
-import { ADAPTER_STATE, CHANNELS, CONTROL_RTC_MAX_BYTES, FILE_TRANSFER, RTC_HEARTBEAT_INTERVAL_MS, RTC_HEARTBEAT_TIMEOUT_MS } from "../lib/transportConstants.js";
+import { ADAPTER_STATE, CHANNELS, CONTROL_RTC_MAX_BYTES, FILE_TRANSFER, RTC_HEARTBEAT_INTERVAL_MS, RTC_HEARTBEAT_TIMEOUT_MS, RTC_LIVENESS_GATE_MS } from "../lib/transportConstants.js";
 import { REMOTE_CONFIG } from "../features/remote/REMOTE_CONFIG.js";
 import { MOBILE_DC } from "../features/mobile/constants.js";
 import { resolveCandidate } from "../lib/mdnsResolver.js";
@@ -153,6 +153,7 @@ export class WebRtcProtocol extends BaseProtocol {
   declare _answerTimer: ReturnType<typeof setTimeout> | null;
   declare _hbTimer: ReturnType<typeof setInterval> | null;
   declare _hbLastPong: number;
+  declare _lastInboundAt: number;
   declare _peerHb: boolean;
   declare _peerEnv2: boolean;
   declare _peerFragCtl: boolean;
@@ -183,6 +184,7 @@ export class WebRtcProtocol extends BaseProtocol {
     this._answerTimer = null;
     this._hbTimer = null;
     this._hbLastPong = 0;
+    this._lastInboundAt = 0; // any control inbound (pong/events) — liveness proof for the gate
     this._peerHb = false;   // peer announced caps.hb — only then may we ping it
     this._peerEnv2 = false; // peer announced caps.env2 — send the binary frame form
     this._peerFragCtl = false; // peer announced caps.fragCtl — it reassembles slices
@@ -198,6 +200,13 @@ export class WebRtcProtocol extends BaseProtocol {
     // Demote TURN relay below free carriers (Tunnel WS) to eliminate bandwidth cost
     if (this.typeDetail === "dc-turn") return 5;
     return 150;
+  }
+
+  // True when the peer went silent (no pong, no events) past the gate window —
+  // PM must route control elsewhere (WS/buffer) even though the DC is still "open".
+  staleForControl(): boolean {
+    if (!this._peerHb || !this._lastInboundAt) return false;
+    return Date.now() - this._lastInboundAt > RTC_LIVENESS_GATE_MS;
   }
 
   async connect(ctx: ProtocolContext): Promise<void> {
@@ -337,6 +346,7 @@ export class WebRtcProtocol extends BaseProtocol {
     try { this._pc?.close(); } catch {}
     this._pc = null;
     this._dcControl = null;
+    this._lastInboundAt = 0; // stale proof must not survive a peer swap
     this._dcBinary = null;
     this._dcFile = null;
     this._dcMobile = null;
@@ -377,7 +387,7 @@ export class WebRtcProtocol extends BaseProtocol {
     pc.onDataChannel((dc) => {
       const label = dc.getLabel?.() || "";
       const setOpen = () => {
-        if (label === "control") { this._dcControl = dc; if (this._peerHb) this._startHeartbeat(dc); }
+        if (label === "control") { this._dcControl = dc; this._lastInboundAt = Date.now(); if (this._peerHb) this._startHeartbeat(dc); }
         else if (label === "binary") this._dcBinary = dc;
         else if (label === "file") this._dcFile = dc;
         else if (label === "mobile") this._dcMobile = dc;
@@ -402,6 +412,7 @@ export class WebRtcProtocol extends BaseProtocol {
           return;
         }
         if (label !== "control") return;
+        this._lastInboundAt = Date.now();
         let parsed;
         try {
           let decoded;

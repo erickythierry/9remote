@@ -5,6 +5,7 @@ import type { BaseProtocol } from "./BaseProtocol.js";
 export type ProtocolAdapter = BaseProtocol & {
   socket?: { disconnect?: (close?: boolean) => unknown } | null;
   setPeerCaps?: (caps: Record<string, unknown>) => void;
+  staleForControl?: () => boolean;
   _peerEnv2?: boolean;
 };
 

@@ -81,18 +81,23 @@ const shellLabel = (tool: ToolNode): string =>
  * stops guessing. The tool-row scan below is the FALLBACK for engines that keep no task
  * model of their own — codex and antigravity hand work off without ever saying its name
  * again, and for those the row is all there is.
+ *
+ * A row reaches the strip only with a card behind it: a task whose tool call this pane's
+ * log does not hold has nothing to show, so it is dropped rather than pinned as a chip
+ * that opens an empty modal.
  */
 export function runningAsync(messages: AiToolMessage[] = [], harnessTasks: HarnessTask[] = []): AsyncTaskRow[] {
   if (harnessTasks.length > 0) {
     return harnessTasks
       .filter((task) => task?.status === "running")
+      .filter((task) => task.toolUseId && findTaskTool(messages, task.toolUseId))
       .map((task) => ({
         kind: task.background ? "shell" : "agent",
         // Two ids, deliberately: `id` is what the pane's own rows are keyed by (the tool
         // call), while `taskId` is the name the CLI minted and the only one a stop can
         // address. They coincide on a row the scan produced, and only there is a stop
         // meaningless anyway — nothing on the other side answers to a tool call id.
-        id: task.toolUseId || task.taskId,
+        id: task.toolUseId,
         taskId: task.taskId,
         label: task.description || task.subagentType || "task",
         // The rest of the harness's own record, passed through for the reader that draws
@@ -118,8 +123,10 @@ function scanRunningRows(messages: AiToolMessage[] = []): AsyncTaskRow[] {
       if (tool?.status === "running") {
         const startedAt = tool.startedAt || tool.timestamp;
         const extra = startedAt ? { startedAt } : null;
-        if (LAUNCH_TOOLS.has(tool.name || "")) out.push({ kind: "agent", id: tool.id, label: agentLabel(tool), ...extra });
-        else if (tool.async) out.push({ kind: "shell", id: tool.id, label: shellLabel(tool), ...extra });
+        // `toolUseId` mirrors `id`: the scan found the card, so the modal and the activity
+        // line can find it again by the same key the harness path uses.
+        if (LAUNCH_TOOLS.has(tool.name || "")) out.push({ kind: "agent", id: tool.id, toolUseId: tool.id, label: agentLabel(tool), ...extra });
+        else if (tool.async) out.push({ kind: "shell", id: tool.id, toolUseId: tool.id, label: shellLabel(tool), ...extra });
       }
       if (tool?.children?.length) walk(tool.children);
     }

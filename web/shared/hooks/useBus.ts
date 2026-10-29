@@ -153,6 +153,8 @@ export function useBus(config: BusConfig = {}) {
           hadConnectionRef.current = true;
           busRef.current = bus as ClientBus;
           useConnectionStore.getState().setConnection({ deliberate: false, everConnected: true });
+          // The bus answered — any offline verdict it replaced is stale.
+          useConnectionStore.getState().setHostOffline(false);
           const cMode = (mode || protocolRef.current?.connectionMode || "tunnel") as ConnectionMode;
           setConnected(true);
           setConnectionMode(cMode);
@@ -175,6 +177,12 @@ export function useBus(config: BusConfig = {}) {
         },
         // Device-approval answer over signaling (no tunnel needed to show the modal)
         onApproval,
+        // Worker vouched the host process is down (503 agent-offline)
+        onHostOffline: () => {
+          if (cancelled) return;
+          debugLog("transport", "[transport] worker says host offline");
+          useConnectionStore.getState().setHostOffline(true);
+        },
         onRetryStatus: (...args: unknown[]) => {
           if (cancelled) return;
           const st = args[0] as RetryStatus;
@@ -268,6 +276,9 @@ export function useBus(config: BusConfig = {}) {
   // The way back from a deliberate disconnect: same auth, fresh attempt.
   const reconnect = () => {
     try { sessionStorage.removeItem("9remote_manual_disconnect"); } catch {}
+    // Manual retry re-asks the Worker — clear the verdict so the modal falls
+    // back to the retrying state until a fresh answer lands.
+    useConnectionStore.getState().setHostOffline(false);
     setReconnectSeq((n) => n + 1);
   };
 

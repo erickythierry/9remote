@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, RefObject, MutableRefObject } from "react"
 import { REMOTE_CONFIG } from "@/features/remote/constants/REMOTE_CONFIG";
 import { tileStatsFrom } from "@/features/remote/lib/tileBinaryHeader";
 import { debugLog } from "@/shared/utils/debugLog";
+import { useClipboardBadge } from "@/features/remote/hooks/useClipboardBadge";
 
 export interface MonitorInfo {
   id?: string | number;
@@ -53,8 +54,7 @@ export function useRemoteStream({
   const [screenLocked, setScreenLocked] = useState<boolean>(false);
   const [unlockReady, setUnlockReady] = useState<boolean>(false);
   const [unlockResult, setUnlockResult] = useState<UnlockResult | null>(null);
-  const [clipboardText, setClipboardText] = useState<string>("");
-  const [clipboardNew, setClipboardNew] = useState<boolean>(false);
+  const clipboard = useClipboardBadge();
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const [activeMonitorIndex, setActiveMonitorIndex] = useState<number>(0);
   const [cursorShape, setCursorShape] = useState<any>(null);
@@ -125,14 +125,9 @@ export function useRemoteStream({
 
     const onRemoteReady = () => doRestream();
 
-    const onClipboardUpdate = ({ text, hash }: { text?: string; hash?: string }) => {
-      setClipboardText((prev) => {
-        if (hash && hash === (onClipboardUpdate as any)._lastHash) return prev;
-        (onClipboardUpdate as any)._lastHash = hash || null;
-        return text || "";
-      });
-      setClipboardNew(true);
-    };
+    // Host clipboard changed → stash text + badge. Host seeds baseline on attach
+    // (covers empty clipboard), so every event here is a real change worth showing.
+    const onClipboardUpdate = ({ text, hash }: { text?: string; hash?: string }) => clipboard.push(text, hash);
 
     const onMonitors = ({ list, activeIndex }: { list?: MonitorInfo[]; activeIndex?: number }) => {
       setMonitors(Array.isArray(list) ? list : []);
@@ -232,9 +227,7 @@ export function useRemoteStream({
     unlockReady,
     unlockResult,
     setUnlockResult,
-    clipboardText,
-    clipboardNew,
-    setClipboardNew,
+    clipboard,
     monitors,
     activeMonitorIndex,
     cursorShape

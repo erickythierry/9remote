@@ -41,7 +41,7 @@ export interface RemoteSidebarProps {
   keyboardOn?: boolean;
   selectionMode?: boolean;
   show: (key: string) => boolean;
-  onBack: () => void;
+  onBack?: () => void;
   onRefresh: () => void;
   onResetZoom: () => void;
   onTogglePointerMode: () => void;
@@ -60,13 +60,15 @@ export default function RemoteSidebar({
 
   return (
     <div className="hidden landscape:flex flex-col items-center gap-1.5 py-2 px-1 bg-bg shrink-0 landscape:w-12 z-20">
-      <ToolButton
-        onClick={onBack}
-        title={t("remote.back")}
-        className="bg-brand-500/15 hover:bg-brand-500/25 text-brand-400"
-      >
-        <ChevronLeft size={18} />
-      </ToolButton>
+      {onBack && (
+        <ToolButton
+          onClick={onBack}
+          title={t("remote.back")}
+          className="bg-brand-500/15 hover:bg-brand-500/25 text-brand-400"
+        >
+          <ChevronLeft size={18} />
+        </ToolButton>
+      )}
 
       <ToolButton onClick={onRefresh} disabled={!streaming} title={t("remote.refresh")} className={MUTED}>
         <RefreshCw size={16} />

@@ -19,6 +19,7 @@ export type TransportCallbacks = {
   onRetryStatus?: (...args: unknown[]) => unknown;
   onUrlUpdate?: (...args: unknown[]) => unknown;
   onApproval?: (status: "pending" | "rejected") => unknown;
+  onHostOffline?: () => unknown;
   onUpgrade?: (...args: unknown[]) => unknown;
   onFallback?: (...args: unknown[]) => unknown;
   onTransportChange?: (...args: unknown[]) => unknown;
@@ -36,6 +37,7 @@ export type AdapterContext = {
   profile: TransportProfile;
   onRetryStatus?: (...args: unknown[]) => unknown;
   onUrlUpdate?: (update: { tunnelUrl?: string; localIp?: string | null }) => unknown;
+  onHostOffline?: () => unknown;
   signaling?: {
     send(message: SignalingMessage): unknown;
     on(handler: (message: SignalingMessage) => unknown): unknown;

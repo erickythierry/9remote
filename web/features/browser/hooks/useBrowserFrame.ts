@@ -4,7 +4,7 @@
 // - Tile batches: decoded via tileDecoder.worker off main thread,
 //   batched in rAF, drawn to canvas via ctx.drawImage, auto-acked.
 // - Periodic repair: sends clientTileHashes via browser:request-tiles-hashes.
-import { useEffect, useRef, useState, RefObject } from "react";
+import { useEffect, useRef, useState, RefObject, MutableRefObject } from "react";
 import { useTiles } from "@/features/remote/hooks/useTiles";
 import { REMOTE_CONFIG } from "@/features/remote/constants/REMOTE_CONFIG";
 
@@ -23,6 +23,9 @@ export interface UseBrowserFrameOptions {
   connected: boolean;
   targetId: string | null;
   onPainted?: (info: Record<string, any>, bytes: number) => void;
+  canvasRef?: MutableRefObject<HTMLCanvasElement | null>;
+  frameRef?: MutableRefObject<BrowserFrameInfo | null>;
+  applyDimensions?: (dims: { width: number; height: number }, renderedTilesRef: MutableRefObject<any>) => void;
 }
 
 export interface UseBrowserFrameReturn {
@@ -31,10 +34,14 @@ export interface UseBrowserFrameReturn {
   frameRef: React.MutableRefObject<BrowserFrameInfo | null>;
 }
 
-export function useBrowserFrame({ busRef, connected, targetId, onPainted }: UseBrowserFrameOptions): UseBrowserFrameReturn {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+// canvasRef / frameRef may be injected (the pane shares them with the remote surface);
+// applyDimensions({width,height}, renderedTilesRef) lets that surface own canvas sizing.
+export function useBrowserFrame({ busRef, connected, targetId, onPainted, canvasRef: extCanvasRef, frameRef: extFrameRef, applyDimensions }: UseBrowserFrameOptions): UseBrowserFrameReturn {
+  const ownCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasRef = extCanvasRef || ownCanvasRef;
   const [frame, setFrame] = useState<BrowserFrameInfo | null>(null);
-  const frameRef = useRef<BrowserFrameInfo | null>(null);
+  const ownFrameRef = useRef<BrowserFrameInfo | null>(null);
+  const frameRef = extFrameRef || ownFrameRef;
   const onPaintedRef = useRef(onPainted);
   useEffect(() => { onPaintedRef.current = onPainted; }, [onPainted]);
 
@@ -81,19 +88,24 @@ export function useBrowserFrame({ busRef, connected, targetId, onPainted }: UseB
       if (stopped || dims?.targetId !== targetId || !dims.frameW || !dims.frameH) return;
       const prev = frameRef.current;
       const resized = !prev || prev.w !== dims.frameW || prev.h !== dims.frameH;
+      // A remounted canvas (pane reconnect) comes back at its default size.
+      const el = canvasRef.current;
+      const canvasStale = !!el && (el.width !== dims.frameW || el.height !== dims.frameH);
       const next: BrowserFrameInfo = {
         w: dims.frameW,
         h: dims.frameH,
         meta: { ...(prev?.meta || {}), deviceWidth: dims.deviceWidth, deviceHeight: dims.deviceHeight }
       };
       frameRef.current = next;
-      if (!resized) return;
+      if (!resized && !canvasStale) return;
       // New grid: old hashes/tiles are meaningless. Resizing a canvas also clears it,
       // so ask for a full repaint right away (tiles may have beaten this message).
       cleanupTiles();
       handleScreenDimensions({ tileCount: dims.tileCount });
       setFrame(next);
-      if (canvasRef.current) {
+      if (applyDimensions) {
+        applyDimensions({ width: dims.frameW, height: dims.frameH }, renderedTilesRef);
+      } else if (canvasRef.current) {
         canvasRef.current.width = dims.frameW;
         canvasRef.current.height = dims.frameH;
       }
@@ -122,7 +134,7 @@ export function useBrowserFrame({ busRef, connected, targetId, onPainted }: UseB
       clearInterval(verifyInterval);
       cleanupTiles();
     };
-  }, [busRef, connected, targetId, cleanupTiles, handleTilesData, handleTilesBinaryV2, handleScreenDimensions, requestScreenWithHashes, renderedTilesRef]);
+  }, [busRef, connected, targetId, cleanupTiles, handleTilesData, handleTilesBinaryV2, handleScreenDimensions, requestScreenWithHashes, renderedTilesRef, canvasRef, frameRef, applyDimensions]);
 
   return {
     canvasRef,

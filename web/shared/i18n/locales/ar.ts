@@ -596,6 +596,8 @@ export default {
         backToLogin: "العودة إلى تسجيل الدخول",
         failed: "فشل الاتصال",
         failedDescription: "تعذر الاتصال بعد {n} محاولات",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "محاولة {n} من {total}",
         exit: "خروج",
         cancel: "إلغاء",

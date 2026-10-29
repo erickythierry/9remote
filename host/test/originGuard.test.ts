@@ -28,12 +28,12 @@ test("the vite dev server is allowed", () => {
 });
 
 test("the Next dev server's port is allowed too — it is another local UI", () => {
-  // `npm run web:dev` serves the web app on 3000 and its page talks to the agent on
+  // `npm run web:dev` serves the web app on 2200 and its page talks to the agent on
   // 2208, so that origin belongs on the list. This was asserted the OTHER way until the
   // dev-server commit added the port and left the test behind — a red suite for a rule
   // that had deliberately changed.
-  assert.equal(isAllowedOrigin("http://localhost:3000"), true);
-  assert.equal(isAllowedOrigin("http://127.0.0.1:3000"), true);
+  assert.equal(isAllowedOrigin("http://localhost:2200"), true);
+  assert.equal(isAllowedOrigin("http://127.0.0.1:2200"), true);
 });
 
 test("a request with no Origin is allowed", () => {

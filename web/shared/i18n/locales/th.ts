@@ -493,6 +493,8 @@ export default {
         backToLogin: "กลับไปเข้าสู่ระบบ",
         failed: "การเชื่อมต่อล้มเหลว",
         failedDescription: "ไม่สามารถเชื่อมต่อหลังจากพยายาม {n} ครั้ง",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "ครั้งที่ {n} จาก {total}",
         exit: "ออก",
         cancel: "ยกเลิก",

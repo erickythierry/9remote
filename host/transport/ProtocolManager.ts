@@ -490,7 +490,9 @@ export class ProtocolManager {
     if (!cfg) return null;
 
     const candidates = [...this._adapters.values()]
-      .filter((a) => a.supports(channel) && a.ready);
+      // Control must not ride a zombie RTC — a silent-but-open DC blackholes
+      // broadcasts until the heartbeat closes it; route to WS/buffer instead.
+      .filter((a) => a.supports(channel) && a.ready && !(channel === CHANNELS.control && a.staleForControl?.()));
 
     if (!candidates.length) {
       this._adapterCache.set(channel, { adapter: null, gen: this._adapterGen });

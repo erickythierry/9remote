@@ -493,6 +493,8 @@ export default {
         backToLogin: "ログインに戻る",
         failed: "接続失敗",
         failedDescription: "{n} 回の試行後に接続できませんでした",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "試行 {n} / {total}",
         exit: "終了",
         cancel: "キャンセル",

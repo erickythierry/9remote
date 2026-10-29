@@ -12,6 +12,7 @@ type LegacyCallbacks = {
   onRetryStatus?: (...args: unknown[]) => unknown;
   onUrlUpdate?: (...args: unknown[]) => unknown;
   onApproval?: (...args: unknown[]) => unknown;
+  onHostOffline?: () => unknown;
   [key: string]: unknown;
 };
 export type WsConfig = LegacyCallbacks & {
@@ -53,7 +54,8 @@ export function buildConfig(wsConfig: WsConfig, rtcConfig?: RtcConfig | null) {
     onDisconnect: wsConfig.onDisconnect,
     onRetryStatus: wsConfig.onRetryStatus,
     onUrlUpdate: wsConfig.onUrlUpdate,
-    onApproval: wsConfig.onApproval
+    onApproval: wsConfig.onApproval,
+    onHostOffline: wsConfig.onHostOffline
   };
 
   const rtcCallbacks = rtcConfig ? {

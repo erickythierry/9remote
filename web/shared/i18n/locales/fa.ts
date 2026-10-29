@@ -596,6 +596,8 @@ export default {
         backToLogin: "بازگشت به ورود",
         failed: "اتصال ناموفق بود",
         failedDescription: "اتصال پس از {n} تلاش امکان‌پذیر نبود",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "تلاش {n} از {total}",
         exit: "خروج",
         cancel: "لغو",

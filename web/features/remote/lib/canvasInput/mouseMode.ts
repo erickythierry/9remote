@@ -73,7 +73,7 @@ export function handleMouseEvent(ctx: any, event: any, type: string, options: Mo
       ctx.wheelAccumRef.current.x = 0;
     }, 150);
 
-    const mult = REMOTE_CONFIG.wheelScrollMultiplier;
+    const mult = options.wheelMultiplier ?? REMOTE_CONFIG.wheelScrollMultiplier;
     // Native wheel `deltaY > 0 = scroll down`; emitScrollFromDelta treats positive as "up"
     // (matches touch finger-drag-up = page up). Flip sign.
     if (dy) ctx.emitScrollFromDelta(-dy * mult);
@@ -128,7 +128,8 @@ export function handleMouseEvent(ctx: any, event: any, type: string, options: Mo
 
   if (type === "pointermove") {
     // Only forward movement while a button is held (drag); plain hover is skipped to avoid flooding
-    if (ctx.mouseDownButtonRef.current != null) {
+    // unless the view opts in (browser :hover) and throttles on its own side.
+    if (ctx.mouseDownButtonRef.current != null || options.hoverMove) {
       socketEmitFunctions.emitMouseMove?.(percentX, percentY);
     }
     return;

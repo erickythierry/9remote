@@ -163,8 +163,9 @@ export function getExtClient(): CdpConnection | null {
 // ---- status + install ----------------------------------------------------------
 export function extStatus(): { connected: boolean; dir: string } {
   const dir = installDir();
-  // The user is told to pick this folder, so it must exist before they look.
-  if (!fs.existsSync(dir)) materializeExtension();
+  // The user is told to pick this folder, so it must exist before they look —
+  // and a folder from an older host must not outlive the template it came from.
+  if (!fs.existsSync(dir) || installedVersion(dir) !== installedVersion(templateDir())) materializeExtension();
   return { connected: Boolean(sock), dir };
 }
 
@@ -180,6 +181,12 @@ function templateDir(): string {
     if (fs.existsSync(path.join(dir, "manifest.json"))) return dir;
   }
   throw new Error("Extension template not found in the package");
+}
+
+function installedVersion(dir: string): string | null {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")).version;
+  } catch { return null; }
 }
 
 // Writes the load-unpacked folder with the relay URL baked into the worker

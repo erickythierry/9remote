@@ -25,9 +25,17 @@ interface BrowserState {
   setWindowFor(wsId: string | null | undefined, windowId: number | string | null | undefined): void;
   profileFor(wsId: string | null | undefined): string;
   windowFor(wsId: string | null | undefined): number | string | null;
+  viewportByWorkspace: Record<string, BrowserViewport | null>;
+  setViewportFor(wsId: string | null | undefined, preset: BrowserViewport | null | undefined): void;
 }
 
-type PersistedBrowserState = Pick<BrowserState, "workspaceProfiles" | "workspaceWindows">;
+export interface BrowserViewport {
+  width: number;
+  height: number;
+  mobile?: boolean;
+}
+
+type PersistedBrowserState = Pick<BrowserState, "workspaceProfiles" | "workspaceWindows" | "viewportByWorkspace">;
 
 // Remote browser state, keyed by WORKSPACE — exactly like terminal tabs:
 // each workspace owns ONE Chrome window of its browsing profile, and the strip
@@ -45,6 +53,9 @@ export const useBrowserStore = create<BrowserState>()(persist<BrowserState, [], 
   setAgentTabs: (tabs) => set({ agentTabs: Array.isArray(tabs) ? (tabs as BrowserTab[]) : [] }),
   workspaceProfiles: {},
   workspaceWindows: {},
+  // Device preset per workspace ({width,height,mobile} | null = follow pane) —
+  // persisted so re-entering the browser tab keeps the chosen device.
+  viewportByWorkspace: {},
   setTabs: (wsId, tabs) => set((s) => ({
     tabsByWorkspace: { ...s.tabsByWorkspace, [wsId]: Array.isArray(tabs) ? (tabs as BrowserTab[]) : [] }
   })),
@@ -61,13 +72,17 @@ export const useBrowserStore = create<BrowserState>()(persist<BrowserState, [], 
   setWindowFor: (wsId, windowId) => set((s) => ({
     workspaceWindows: { ...s.workspaceWindows, [wsId || "default"]: windowId || null }
   })),
+  setViewportFor: (wsId, preset) => set((s) => ({
+    viewportByWorkspace: { ...s.viewportByWorkspace, [wsId || "default"]: preset || null }
+  })),
   profileFor: (wsId) => get().workspaceProfiles[wsId || "default"] || "default",
   windowFor: (wsId) => get().workspaceWindows[wsId || "default"] || null
 }), {
   name: "browser-ui-state",
   partialize: (state) => ({
     workspaceProfiles: state.workspaceProfiles,
-    workspaceWindows: state.workspaceWindows
+    workspaceWindows: state.workspaceWindows,
+    viewportByWorkspace: state.viewportByWorkspace
   }),
   // Same window-guarded storage pattern as terminalStore — no warnings under node/tests.
   storage: {

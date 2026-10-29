@@ -44,8 +44,8 @@ export default function WorkspaceHeader({
   // that would scan this workspace's path on the wrong machine.
   const { branch, dirty } = useWorkspaceGit(gitPath, fileBus, { enabled: !!fileBus });
 
-  // No select door (mobile session list): the row itself toggles the group, not just the chevron.
-  const rowClick = onSelect || (onToggleCollapse ? () => { vibrate(); onToggleCollapse(); } : undefined);
+  // The row itself toggles expand/collapse, matching the chevron behavior.
+  const rowClick = onToggleCollapse ? () => { vibrate(); onToggleCollapse(); } : onSelect;
 
   return (
     <div

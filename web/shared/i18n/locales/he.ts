@@ -596,6 +596,8 @@ export default {
         backToLogin: "חזרה להתחברות",
         failed: "החיבור נכשל",
         failedDescription: "לא ניתן להתחבר לאחר {n} ניסיונות",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "ניסיון {n} מתוך {total}",
         exit: "יציאה",
         cancel: "ביטול",

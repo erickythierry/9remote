@@ -493,6 +493,8 @@ export default {
         backToLogin: "Tillbaka till inloggning",
         failed: "Anslutning misslyckades",
         failedDescription: "Det gick inte att ansluta efter {n} försök",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "Försök {n} av {total}",
         exit: "Avsluta",
         cancel: "Avbryt",

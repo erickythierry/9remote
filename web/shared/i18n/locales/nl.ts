@@ -493,6 +493,8 @@ export default {
         backToLogin: "Terug naar login",
         failed: "Verbinding mislukt",
         failedDescription: "Kan geen verbinding maken na {n} pogingen",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "Poging {n} van {total}",
         exit: "Afsluiten",
         cancel: "Annuleren",

@@ -201,7 +201,10 @@ export async function syncActiveTab(instance: BrowserInstance | null | undefined
   } catch { /* best-effort */ }
 }
 
-export function getOrLaunchBrowser(profileName: unknown = "default", { headless = BROWSER_HEADLESS } = {}): Promise<BrowserInstance> {
+// Overloads: attachOnly may resolve null (no live Chrome); a launch never does.
+export function getOrLaunchBrowser(profileName?: unknown, opts?: { headless?: boolean; attachOnly?: false }): Promise<BrowserInstance>;
+export function getOrLaunchBrowser(profileName: unknown, opts: { headless?: boolean; attachOnly: boolean }): Promise<BrowserInstance | null>;
+export function getOrLaunchBrowser(profileName: unknown = "default", { headless = BROWSER_HEADLESS, attachOnly = false } = {}): Promise<BrowserInstance | null> {
   const name = safeProfileName(profileName) ? (profileName as string) : "default";
   const existing = activeBrowsers.get(name);
   if (existing && !existing.client.closed) {
@@ -209,7 +212,10 @@ export function getOrLaunchBrowser(profileName: unknown = "default", { headless 
     return Promise.resolve(existing);
   }
   if (launching.has(name)) return launching.get(name) as Promise<BrowserInstance>;
-  const p = launchBrowser(name, headless).finally(() => launching.delete(name));
+  // Attach-only bypasses the memo: its null result (no live Chrome) must never
+  // be served to a caller that actually wants a launch.
+  if (attachOnly) return launchBrowser(name, headless, true).catch(() => null);
+  const p = (launchBrowser(name, headless) as Promise<BrowserInstance>).finally(() => launching.delete(name));
   launching.set(name, p);
   return p;
 }
@@ -224,11 +230,37 @@ export function noteBrowserActivity(profileName: unknown = "default") {
 // Chrome writes DevToolsActivePort into the user-data-dir while running: a
 // live port there means that browser already owns the profile. Returns
 // { port, client, headless } or null (stale file / unreachable / ws refused).
-async function probeProfileDevTools(profileDir: string) {
+// Newer Chrome stopped writing that file for an explicit --remote-debugging-port,
+// so the fallback reads the port WE recorded at spawn time.
+const PORTS_FILE = path.join(os.homedir(), ".9remote", "browser", "ports.json");
+function readPortsMap(): Record<string, number> {
+  try { return JSON.parse(fs.readFileSync(PORTS_FILE, "utf8")) || {}; } catch { return {}; }
+}
+function writePortsMap(map: Record<string, number>) {
+  try {
+    fs.mkdirSync(path.dirname(PORTS_FILE), { recursive: true });
+    const tmp = `${PORTS_FILE}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(map));
+    fs.renameSync(tmp, PORTS_FILE);
+  } catch (e) { logger.warn(`Ports map save failed: ${errorMessage(e)}`); }
+}
+function saveProfilePort(name: string, port: number) {
+  const map = readPortsMap();
+  if (map[name] === port) return;
+  map[name] = port;
+  writePortsMap(map);
+}
+function clearProfilePort(name: string) {
+  const map = readPortsMap();
+  if (!(name in map)) return;
+  delete map[name];
+  writePortsMap(map);
+}
+async function probeProfileDevTools(name: string, profileDir: string) {
   let port;
   try {
     port = Number(fs.readFileSync(path.join(profileDir, "DevToolsActivePort"), "utf8").split("\n")[0]);
-  } catch { return null; }
+  } catch { port = Number(readPortsMap()[name]) || 0; }
   if (!Number.isInteger(port) || port <= 0) return null;
   const info = await waitForDevTools(port, 1000).catch(() => null) as DevToolsInfo | null;
   if (!info) return null;
@@ -265,7 +297,7 @@ function clearStaleProfileLock(profileDir: string) {
   } catch {}
 }
 
-async function launchBrowser(name: string, headless: boolean): Promise<BrowserInstance> {
+async function launchBrowser(name: string, headless: boolean, attachOnly = false): Promise<BrowserInstance | null> {
   const bin = resolveChromeBinary();
   if (!bin) throw new Error("No Chrome/Chromium binary found on this host");
 
@@ -279,7 +311,7 @@ async function launchBrowser(name: string, headless: boolean): Promise<BrowserIn
   // A Chrome already holding this profile (another host process, or a zombie
   // the idle sweep missed) makes a fresh spawn hand off and exit without ever
   // opening its port — adopt the live browser instead of fighting the lock.
-  const live = await probeProfileDevTools(profileDir);
+  const live = await probeProfileDevTools(name, profileDir);
   let port: number;
   let child: ChildProcess | null = null;
   let client: CdpClient;
@@ -290,6 +322,7 @@ async function launchBrowser(name: string, headless: boolean): Promise<BrowserIn
     clientHeadless = live.headless;
     logger.info(`Reusing live Chrome on port ${port} for profile "${name}"`);
   } else {
+    if (attachOnly) return null; // adoption only: never spawn
     clearStaleProfileLock(profileDir);
     port = await reservePort();
     const args = [
@@ -322,6 +355,7 @@ async function launchBrowser(name: string, headless: boolean): Promise<BrowserIn
     try {
       const info = await waitForDevTools(port, LAUNCH_TIMEOUT_MS) as DevToolsInfo;
       client = await CdpClient.connect(info.webSocketDebuggerUrl);
+      saveProfilePort(name, port); // our DevToolsActivePort substitute
     } catch (e) {
       child.kill();
       throw new Error(`Failed to connect to Chrome: ${errorMessage(e)}`);
@@ -449,6 +483,7 @@ export async function closeBrowser(profileName: string = "default") {
   if (!instance) return;
   activeBrowsers.delete(profileName);
   await gracefullyCloseChrome(instance);
+  clearProfilePort(profileName);
 }
 
 // Host shutdown door: an orphaned Chrome keeps the profile dir locked and the
@@ -475,6 +510,18 @@ export function sweepIdleBrowsers() {
   }
 }
 setInterval(sweepIdleBrowsers, HEADLESS_IDLE_SWEEP_MS).unref?.();
+
+// Startup recovery: Chrome outlives the host, so re-adopt every live one at
+// boot instead of leaving orphans holding RAM that no sweep ever reaches.
+// Attach only — profiles without a running Chrome stay untouched.
+export async function adoptLiveBrowsers() {
+  const adopted: string[] = [];
+  for (const { name } of listProfiles()) {
+    const instance = await getOrLaunchBrowser(name, { attachOnly: true }).catch(() => null);
+    if (instance) adopted.push(name);
+  }
+  return adopted;
+}
 
 const sleep = <T>(ms: number, value: T) => new Promise((resolve) => setTimeout(() => resolve(value), ms));
 
@@ -504,6 +551,67 @@ export async function frontWatchedWindow(profileName = "default") {
   const sid = await browser.sessionFor(anchorTab.id).catch(() => null);
   if (sid) await browser.client.call("Page.bringToFront", {}, sid).catch(() => {});
   return win;
+}
+
+// A window id only means something while one of the profile's tabs still lives
+// in it — Chrome reuses ids across restarts, so an unvalidated id can point at
+// a window nobody owns anymore. Attaches to a live Chrome when we have not
+// adopted it yet: validation that races the startup sweep must not misread
+// "not tracked" as "dead" and forget a good mapping. Never launches Chrome.
+export async function liveWindowId(profileName = "default", windowId: number | null = null) {
+  if (!Number.isFinite(Number(windowId)) || Number(windowId) <= 0) return null;
+  if (!peekBrowser(profileName)) await getOrLaunchBrowser(profileName, { attachOnly: true }).catch(() => null);
+  const tabs = await peekTabs(profileName);
+  return tabs.some((t) => t.windowId === Number(windowId)) ? Number(windowId) : null;
+}
+
+// ---- workspace → window ownership (persisted) --------------------------------
+// Chrome itself is the daemon: it outlives the host and keeps its windows, so
+// the only thing worth surviving a host restart is WHICH workspace owns which
+// window. Debounced writes + tmp/rename keep concurrent hosts from corrupting
+// the file (last writer wins, worst case a workspace reopens its window).
+const WORKSPACE_WINDOWS_FILE = path.join(os.homedir(), ".9remote", "browser", "workspaces.json");
+const workspaceWindows = new Map<string, number>(); // "profile|workspaceId" -> windowId
+let workspaceSaveTimer: ReturnType<typeof setTimeout> | null = null;
+try {
+  const raw = JSON.parse(fs.readFileSync(WORKSPACE_WINDOWS_FILE, "utf8"));
+  for (const [k, v] of Object.entries(raw || {})) {
+    if (Number.isFinite(Number(v)) && Number(v) > 0) workspaceWindows.set(k, Number(v));
+  }
+} catch { /* first run or unreadable: start empty */ }
+
+function scheduleWorkspaceSave() {
+  if (workspaceSaveTimer) return;
+  workspaceSaveTimer = setTimeout(() => {
+    workspaceSaveTimer = null;
+    try {
+      fs.mkdirSync(path.dirname(WORKSPACE_WINDOWS_FILE), { recursive: true });
+      const tmp = `${WORKSPACE_WINDOWS_FILE}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(workspaceWindows)));
+      fs.renameSync(tmp, WORKSPACE_WINDOWS_FILE);
+    } catch (e) { logger.warn(`Workspace map save failed: ${errorMessage(e)}`); }
+  }, 250);
+  workspaceSaveTimer.unref?.();
+}
+
+const wsKeyOf = (profile: unknown, workspaceId: string) => `${safeProfileName(profile) ? profile : "default"}|${workspaceId}`;
+
+export function recordWorkspaceWindow(profile: unknown, workspaceId: string | undefined, windowId: unknown) {
+  if (!workspaceId || !Number.isFinite(Number(windowId)) || Number(windowId) <= 0) return;
+  const key = wsKeyOf(profile, workspaceId);
+  if (workspaceWindows.get(key) === Number(windowId)) return;
+  workspaceWindows.set(key, Number(windowId));
+  scheduleWorkspaceSave();
+}
+
+export function lookupWorkspaceWindow(profile: unknown, workspaceId: string | undefined) {
+  if (!workspaceId) return null;
+  return workspaceWindows.get(wsKeyOf(profile, workspaceId)) ?? null;
+}
+
+export function forgetWorkspaceWindow(profile: unknown, workspaceId: string | undefined) {
+  if (!workspaceId || !workspaceWindows.delete(wsKeyOf(profile, workspaceId))) return;
+  scheduleWorkspaceSave();
 }
 
 // Tabs grouped by Chrome window: a workspace owns ONE window of its profile,

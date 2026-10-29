@@ -493,6 +493,8 @@ export default {
         backToLogin: "Назад до входу",
         failed: "Не вдалося підключитися",
         failedDescription: "Не вдалося підключитися після {n} спроб",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "Спроба {n} з {total}",
         exit: "Вийти",
         cancel: "Скасувати",

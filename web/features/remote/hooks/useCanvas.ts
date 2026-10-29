@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { REMOTE_CONFIG } from "@/features/remote/constants/REMOTE_CONFIG";
 import { vibrate } from "@/shared/utils/vibration";
-import { useCanvasViewport } from "@/features/remote/hooks/useCanvasViewport";
+import { useCanvasViewport, type UseCanvasViewportOptions } from "@/features/remote/hooks/useCanvasViewport";
 import {
   clamp, maxPanFor, clampPan, accumulateScrollDelta,
   isDoubleClick as isDoubleClickAt, momentumStep
@@ -12,8 +12,8 @@ import { handleMouseEvent } from "@/features/remote/lib/canvasInput/mouseMode";
 import { handleTrackpadEvent } from "@/features/remote/lib/canvasInput/trackpadMode";
 import { handleTouchEvent } from "@/features/remote/lib/canvasInput/touchMode";
 
-export function useCanvas(socketEmitFunctions: any) {
-  const viewport = useCanvasViewport();
+export function useCanvas(socketEmitFunctions: any, options: UseCanvasViewportOptions = {}) {
+  const viewport = useCanvasViewport(options);
   const {
     canvasRef, canvasContainerRef, canvasZoom, setCanvasZoom, canvasPan, setCanvasPan,
     fitScale, baseCanvasSize, containerSize, displaySizeAt, getCanvasCoordinates, recordInteractPx
@@ -353,6 +353,7 @@ export function useCanvas(socketEmitFunctions: any) {
     releaseHandHold,
     handleCanvasInteraction,
     handleCanvasDimensions: viewport.handleCanvasDimensions,
-    serverDimensionsRef: viewport.serverDimensionsRef
+    serverDimensionsRef: viewport.serverDimensionsRef,
+    recalculateDisplaySize: viewport.recalculateDisplaySize
   };
 }

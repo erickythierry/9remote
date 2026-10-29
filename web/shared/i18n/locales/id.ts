@@ -493,6 +493,8 @@ export default {
         backToLogin: "Kembali ke Login",
         failed: "Koneksi Gagal",
         failedDescription: "Tidak dapat terhubung setelah {n} percobaan",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "Percobaan {n} dari {total}",
         exit: "Keluar",
         cancel: "Batal",

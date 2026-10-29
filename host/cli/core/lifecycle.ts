@@ -51,7 +51,7 @@ export function startServerWithRestart(onReady: ((child: ChildProcess) => unknow
       isFirstStart = false;
     }
 
-    const useDevServer = process.env.NODE_ENV === "development" && fs.existsSync(DEV_SERVER);
+    const useDevServer = process.env.NREMOTE_ENV === "development" && fs.existsSync(DEV_SERVER);
     const serverPath = useDevServer ? DEV_SERVER : STANDALONE_SERVER;
 
     if (!fs.existsSync(serverPath)) {
@@ -60,7 +60,7 @@ export function startServerWithRestart(onReady: ((child: ChildProcess) => unknow
     }
 
     const spawnEnv: NodeJS.ProcessEnv = { ...process.env, PORT: String(SERVER_PORT) };
-    if (!useDevServer) delete spawnEnv.NODE_ENV;
+    if (!useDevServer) delete spawnEnv.NREMOTE_ENV;
 
     const serverArgs = useDevServer
       ? ["--import", createRequire(import.meta.url).resolve("tsx"), serverPath]

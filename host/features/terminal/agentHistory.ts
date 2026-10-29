@@ -570,13 +570,20 @@ function filesUnder(dir: string, depth: number, ext: string | undefined, fileNam
 
 function collectCwdDir(source: HistorySource, cwd: string, limit: number): SessionRow[] {
   const rows = [];
-  for (const root of rootsOf(source)) {
-    const base = path.join(root, source.encode?.(cwd) ?? "", source.sub || "");
-    for (const filePath of filesUnder(base, source.depth || 0, source.ext, source.file)) {
-      const parsed = source.parse?.(filePath);
-      if (!parsed?.sessionId) continue;
-      rows.push({ ...parsed, filePath });
-    }
+  // Newest first, then parse — a directory of past conversations can hold hundreds
+  // of files, and parsing every one to keep the newest few reads far more than the
+  // list needs. These parsers carry no timestamp of their own, so the file's mtime
+  // is the same key byNewest sorts on — ordering here matches the final order.
+  const files = rootsOf(source)
+    .flatMap((root) => filesUnder(path.join(root, source.encode?.(cwd) ?? "", source.sub || ""), source.depth || 0, source.ext, source.file))
+    .map((filePath) => ({ filePath, mtime: mtimeMs(filePath) }))
+    .sort((a, b) => b.mtime - a.mtime);
+  for (const { filePath } of files) {
+    // A file that yields no session is not a row — keep looking further down.
+    if (rows.length >= limit) break;
+    const parsed = source.parse?.(filePath);
+    if (!parsed?.sessionId) continue;
+    rows.push({ ...parsed, filePath });
   }
   return byNewest(rows, source, cwd).slice(0, limit);
 }

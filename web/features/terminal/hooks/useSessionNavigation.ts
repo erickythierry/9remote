@@ -10,7 +10,7 @@ import { useFleetStore } from "@/shared/stores/fleetStore";
 import { makeFleetActions } from "@/features/hosts/lib/fleetActions";
 import { agentLaunchCommand, applySkipPermissions } from "@/features/terminal/constants/agentCli";
 import { OPEN_SESSION_EVENT } from "@/features/terminal/constants/terminalConfig";
-import type { WorkspaceView } from "@/features/terminal/constants/routeConfig";
+import { OVERLAY_VIEWS, type WorkspaceView } from "@/features/terminal/constants/routeConfig";
 import type { AgentConfig, CreateSession } from "@/features/session/hooks/useAgentBus";
 
 interface SessionRecord {
@@ -327,9 +327,14 @@ export function useSessionNavigation({
     const afterDelete = () => {
       removeOpenedSession(sessionId);
       useTerminalStore.getState().closeSession(sessionId);
+      const remaining = sessions.filter((s) => s.id !== sessionId);
+      // Mobile has no shell left to hold the overlay once the last terminal is gone — back to the list, not a black screen
+      if (!isDesktop && !remaining.length && OVERLAY_VIEWS.includes(currentView?.type ?? "")) {
+        setViewStack([{ type: "list" }]);
+        return;
+      }
       if (!isDeletingActive) return;
       // Focus the next session (same workspace first, then any) or fall back to the list
-      const remaining = sessions.filter((s) => s.id !== sessionId);
       const sameWorkspace = remaining.filter((s) => sessionWorkspaceId(s) === workspaceId);
       const next = sameWorkspace[0] || remaining[0];
       if (next) {
@@ -346,7 +351,7 @@ export function useSessionNavigation({
       return;
     }
     deleteSession(sessionId, afterDelete);
-  }, [sessions, currentView, deleteSession, removeOpenedSession, touchLivePane, storePopView, replaceTopWithSession]);
+  }, [sessions, currentView, isDesktop, setViewStack, deleteSession, removeOpenedSession, touchLivePane, storePopView, replaceTopWithSession]);
 
   const handleRenameSession = useCallback((sessionId: string, newName: string) => {
     const hostKey = sessions.find((s) => s.id === sessionId)?.hostKey;

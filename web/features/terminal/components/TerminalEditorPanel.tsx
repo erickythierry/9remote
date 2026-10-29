@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { startWidthDrag } from "@/shared/utils/dragResize";
-import { Save, X, ExternalLink, Eye, FileCode } from "@/shared/components/ui/Icon";
+import { Save, X, ExternalLink, Eye, FileCode, Globe } from "@/shared/components/ui/Icon";
 import { vibrate } from "@/shared/utils/vibration";
 import { useI18n } from "@/shared/i18n";
 import { PANEL_HEADER_HEIGHT } from "@/shared/constants/layout";
 import { EDITOR_PANEL_WIDTH } from "../constants/terminalConfig";
 import { resolveFileIcon } from "@/features/fileExplorer/constants/fileIcons";
-import { isDiffPath, parseRepoDiffPath, makeDiffPath, GIT_STATUS_COLORS, getTextPreviewKind } from "@/features/fileExplorer/constants/fileExplorer";
+import { isDiffPath, parseRepoDiffPath, makeDiffPath, resolveDiffFilePath, GIT_STATUS_COLORS, getTextPreviewKind, STORAGE_KEYS, EDITOR_FONT_DEFAULT, EDITOR_FONT_MIN, EDITOR_FONT_MAX } from "@/features/fileExplorer/constants/fileExplorer";
+import { usePersistedState } from "@/shared/hooks/usePersistedState";
 import { isPreviewable } from "@/features/fileExplorer/components/FilePreview";
 import { useFileDocument } from "@/features/fileExplorer/hooks/useFileDocument";
 import { useUnsavedGuard } from "@/features/fileExplorer/hooks/useUnsavedGuard";
@@ -18,6 +19,7 @@ import CodeEditor from "@/features/fileExplorer/components/CodeEditor";
 import FilePreview from "@/features/fileExplorer/components/FilePreview";
 import TextPreview from "@/features/fileExplorer/components/TextPreview";
 import DiffView from "@/features/fileExplorer/components/DiffView";
+import { openHtmlPreviewInBrowser } from "@/features/fileExplorer/lib/previewInBrowser";
 
 export interface TerminalEditorPanelProps {
   filePath?: string | null;
@@ -59,16 +61,17 @@ export default function TerminalEditorPanel({
   const diff = isDiff ? parseRepoDiffPath(filePath || "") : null;
   const diffRepo = diff?.repoPath || workspace;
   const displayPath = isDiff && diff ? diff.filePath : (filePath || "");
-  // What the editor would open for this diff. git reports repo-relative paths, so a diff
-  // read from a nested repo must carry its repo along or the file is not found.
-  const diffAbsPath = diff
-    ? (diff.repoPath
-      ? `${diff.repoPath.replace(/\/$/, "")}/${diff.filePath}`
-      : diff.filePath.startsWith("/") ? diff.filePath : `${workspace?.replace(/\/$/, "") || ""}/${diff.filePath}`)
-    : "";
+  // What the editor or preview would open for this diff.
+  const diffAbsPath = diff ? resolveDiffFilePath(filePath || "", workspace) : "";
   const editable = !!filePath && !isDiff && !isPreviewable(filePath);
 
   const doc = useFileDocument({ filePath: editable && filePath ? filePath : "", fileBus });
+
+  // The docked panel steps down from the shared editor font (CodeEditor compact), so
+  // the +/- bar adjusts the same persisted size the full editor and settings use.
+  const [fontSize, setFontSize] = usePersistedState<number>(STORAGE_KEYS.editorFontSize, EDITOR_FONT_DEFAULT);
+  const bumpFont = (delta: number) => setFontSize((v) =>
+    Math.max(EDITOR_FONT_MIN, Math.min(EDITOR_FONT_MAX, (v || EDITOR_FONT_DEFAULT) + delta)));
   // The watch callback must not be rebuilt on every keystroke — doc is a new object each
   // render, so it is read through a ref instead of captured. Synced in an effect, the
   // same shape useDirWatch uses for its own callback ref.
@@ -78,12 +81,19 @@ export default function TerminalEditorPanel({
 
   // Text files with rendered forms (html, markdown, mermaid) can flip between source and preview.
   const previewKind = !editable || !filePath ? null : getTextPreviewKind(filePath);
+  // HTML renders in the remote browser pane, not in-place: its "preview" hands a
+  // loopback preview URL to the browser view instead of swapping this panel.
+  const isHtmlPreview = previewKind === "html";
+  // A diff over an html file can still be previewed — on its resolved disk path,
+  // not the diff tab id. Deleted files have nothing on disk to serve.
+  const diffHtmlPreview = !!diff && diff.status !== "D" && getTextPreviewKind(diff.filePath) === "html";
   // A non-zero previewSeq is the opener saying "show this rendered" — the tree's Preview
   // action, and every artifact the AI opens. Read at mount too, not only on a later
   // change: the panel is mounted BY that first open, so a seq compared against its own
   // initial value never fires and the first artifact would land on its source.
   const wantsRendered = previewSeq > 0;
   const [showRendered, setShowRendered] = useState(wantsRendered);
+  const [previewError, setPreviewError] = useState("");
   const [saveSeq, setSaveSeq] = useState(0);
   const [lastPath, setLastPath] = useState(filePath);
   const [prevSaved, setPrevSaved] = useState(false);
@@ -95,6 +105,7 @@ export default function TerminalEditorPanel({
     setLastPath(filePath);
     setLastPreviewSeq(previewSeq);
     setShowRendered(wantsRendered);
+    setPreviewError("");
   }
   // Edge-trigger justSaved into a counter the preview can reload on.
   if (doc.justSaved !== prevSaved) {
@@ -103,8 +114,15 @@ export default function TerminalEditorPanel({
   }
 
   // Escape closes, but goes through the guard so it cannot throw away unsaved edits.
+  // Only keydowns born inside the panel: an Esc typed into a terminal (vim) or
+  // another tab belongs to that surface, not to this file.
+  const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") guard.guard(onClose || (() => {})); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !onClose) return;
+      if (!rootRef.current?.contains(e.target as Node)) return;
+      guard.guard(onClose);
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [guard, onClose]);
@@ -128,6 +146,25 @@ export default function TerminalEditorPanel({
     onDirsChanged: onDiskChanged
   });
 
+  // HTML preview opens in the remote browser pane; this panel stays on source.
+  const openBrowserPreview = useCallback((path: string) => {
+    openHtmlPreviewInBrowser(fileBus, path).then((r) => {
+      if (!r.ok) setPreviewError(r.error || t("editor.previewFailed"));
+    });
+  }, [fileBus, t]);
+  // An artifact or Preview open takes HTML straight to the browser pane.
+  useEffect(() => {
+    if (!isHtmlPreview || previewSeq <= 0 || !filePath) return;
+    let cancelled = false;
+    openHtmlPreviewInBrowser(fileBus, filePath).then((r) => {
+      if (!cancelled && !r.ok) setPreviewError(r.error || t("editor.previewFailed"));
+    });
+    return () => { cancelled = true; };
+  // t is stable enough for an error string: a locale dict landing late must not
+  // re-run the open (it would spawn a duplicate tab).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHtmlPreview, previewSeq, fileBus, filePath]);
+
   const fileIconElement = resolveFileIcon({ name: displayPath }, 14);
   const name = artifactTitle || displayPath.split("/").filter(Boolean).pop() || "";
   const statusColor = diff ? GIT_STATUS_COLORS[diff.status] : null;
@@ -146,6 +183,7 @@ export default function TerminalEditorPanel({
 
   return (
     <div
+      ref={rootRef}
       style={{ width: isDesktop ? (width || EDITOR_PANEL_WIDTH.default) : "100%" }}
       className={`relative h-full flex flex-col bg-surface border-l border-border select-text ${isDesktop ? "" : "w-full"}`}
     >
@@ -172,7 +210,18 @@ export default function TerminalEditorPanel({
         </div>
 
         <div className="flex items-center gap-0.5 shrink-0 text-text-muted">
-          {previewKind && (
+          {(diffHtmlPreview || isHtmlPreview) && (
+            <button
+              onClick={() => { vibrate(); openBrowserPreview(diffHtmlPreview ? diffAbsPath : (filePath || "")); }}
+              className="p-1 rounded hover:bg-surface-2 hover:text-text transition-colors"
+              title={t("editor.previewInBrowser")}
+              aria-label={t("editor.previewInBrowser")}
+            >
+              <Globe size={14} />
+            </button>
+          )}
+
+          {previewKind && !isHtmlPreview && (
             <button
               onClick={() => { vibrate(); setShowRendered((v) => !v); }}
               className={`p-1 rounded hover:bg-surface-2 transition-colors ${showRendered ? "text-brand-500" : ""}`}
@@ -200,7 +249,7 @@ export default function TerminalEditorPanel({
               onClick={() => {
                 vibrate();
                 const target = diff ? diffAbsPath : (filePath || "");
-                if (target) onOpenFull(target);
+                if (target) guard.guard(() => onOpenFull(target));
               }}
               className="p-1 rounded hover:bg-surface-2 hover:text-text transition-colors"
               title={t("editor.openInEditor")}
@@ -223,6 +272,12 @@ export default function TerminalEditorPanel({
         </div>
       </div>
 
+      {previewError && (
+        <div className="px-3 py-1.5 text-[11px] text-red-500 bg-red-500/10 border-b border-border-subtle break-words">
+          {previewError}
+        </div>
+      )}
+
       {editable && doc.staleOnDisk && (
         <div className="px-3 py-1 bg-amber-500/15 border-b border-amber-500/30 text-amber-300 text-xs flex items-center justify-between shrink-0">
           <span className="truncate">{t("editor.changedOnDisk")}</span>
@@ -240,7 +295,7 @@ export default function TerminalEditorPanel({
           <DiffView diffPath={makeDiffPath(diff.status, diff.filePath)} workspace={diffRepo || undefined} fileBus={fileBus} compact />
         ) : filePath && isPreviewable(filePath) ? (
           <FilePreview filePath={filePath} fileBus={fileBus} />
-        ) : showRendered && previewKind && filePath ? (
+        ) : showRendered && previewKind && !isHtmlPreview && filePath ? (
           <TextPreview kind={previewKind} filePath={filePath} fileBus={fileBus} content={doc.content} reloadKey={saveSeq} />
         ) : doc.loading ? (
           <div className="h-full flex items-center justify-center text-text-muted text-xs">{t("common.loading")}</div>
@@ -257,6 +312,27 @@ export default function TerminalEditorPanel({
           />
         )}
       </div>
+
+      {/* Font size bar — only on the source view, where the compact editor renders. */}
+      {editable && (!showRendered || isHtmlPreview) && (
+        <div className="h-7 px-1.5 flex items-center justify-end gap-0.5 border-t border-border-subtle flex-shrink-0">
+          <button
+            onClick={() => { vibrate(); bumpFont(-1); }}
+            className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
+          >
+            −
+          </button>
+          <span className="min-w-[26px] text-center text-[10px] tabular-nums text-text-subtle" title={t("fileExplorer.fontSize")}>
+            {fontSize}
+          </span>
+          <button
+            onClick={() => { vibrate(); bumpFont(1); }}
+            className="w-6 h-6 flex items-center justify-center text-[14px] leading-none text-text-muted hover:text-text rounded-[3px] hover:bg-surface-2 transition-colors"
+          >
+            +
+          </button>
+        </div>
+      )}
 
       <UnsavedDialog
         isOpen={guard.asking}

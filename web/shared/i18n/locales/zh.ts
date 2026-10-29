@@ -493,6 +493,8 @@ export default {
         backToLogin: "返回登录",
         failed: "连接失败",
         failedDescription: "尝试 {n} 次后无法连接",
+        hostOfflineTitle: "Host is Offline",
+        hostOfflineDescription: "The 9Remote host on this machine is not running. Start it on your machine, then retry.",
         attemptOf: "第 {n} 次，共 {total} 次",
         exit: "退出",
         cancel: "取消",
