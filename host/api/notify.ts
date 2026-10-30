@@ -1,16 +1,17 @@
 import type { ParsedUrlQuery } from "node:querystring";
 import type { RouteContext } from "../lib/router.js";
-type NotifyParams = { type: string; sessionId: string; tool: string; csid?: string; [key: string]: unknown };
+type NotifyParams = { type: string; sessionId: string; tool: string; csid?: string; aid?: string; ev?: string; [key: string]: unknown };
 import type { IncomingMessage, ServerResponse } from "node:http";
 /**
  * Notification handler (public — called by AI hooks)
  */
 
 import { jsonOk, jsonErr } from "../lib/router.js";
+import { createLogger } from "../lib/logger.js";
 import { getIO } from "../transport/server.js";
 import { broadcast } from "../transport/broadcast.js";
 import { sendPushNotification } from "../features/terminal/pushManager.js";
-import { applyEvent, STATES, TYPE_TO_STATE, setConversationId, getConversation, getSessionAgent, requestAutoName, scheduleDoneCommit } from "../features/terminal/statusManager.js";
+import { applyEvent, getStatus, STATES, TYPE_TO_STATE, setConversationId, getConversation, getSessionAgent, requestAutoName, scheduleDoneCommit, isDonePending } from "../features/terminal/statusManager.js";
 import { sessionIdFromHookPayload, SESSION_ID_RE } from "../features/terminal/agentCatalog.js";
 import { agentOverridesDetected, baseOfAgentId, surfaceAgent } from "../features/terminal/customAgents.js";
 import { isFollowableConversation } from "../features/ai/claudeRewind.js";
@@ -20,6 +21,7 @@ import { onWorkerDone } from "../features/jarvis/jarvisWake.js";
 const pushLastTime: Partial<Record<string, number>> = {};
 const typeToState: Readonly<Partial<Record<string, string>>> = TYPE_TO_STATE;
 const PUSH_RATE_LIMIT_MS = 10000;
+const logger = createLogger("notify");
 // Each CLI names its conversation id differently and the catalog owns the
 // spelling, so a new CLI's hook needs no change here. `csid` is the flat form
 // the shell hooks send; a plugin may post the CLI's own field name instead.
@@ -69,7 +71,9 @@ function commitNotify(params: NotifyParams, io: NonNullable<ReturnType<typeof ge
   const notification = { type, sessionId, tool, timestamp: now };
 
   // State machine: applyEvent maps legacy type (stop/notification) and new (working/blocked/done).
+  const prevState = getStatus(sessionId)?.state || "none";
   const entry = applyEvent({ type, sessionId, tool });
+  if (entry?.state !== prevState) logger.info(`[status] ${sessionId} ${prevState} -> ${entry?.state || "none"} type=${type} ev=${params.ev || "-"} aid=${params.aid || "-"} csid=${params.csid || "-"}`);
   const state = entry?.state || STATES.IDLE;
 
   // Type A — in-app badge + 4-state signal. chatNotification kept for legacy web clients.
@@ -118,6 +122,14 @@ function dispatchNotify(params: NotifyParams) {
   const now = Date.now();
   const io = getIO();
   if (!io || !sessionId) return;
+
+  // A sub-agent or a background fork reports under the parent's id; with no turn open, its working is not a turn.
+  const current = getStatus(sessionId)?.state;
+  const turnOpen = (current === STATES.WORKING || current === STATES.BLOCKED) && !isDonePending(sessionId);
+  if (params.aid && typeToState[type] === STATES.WORKING && !turnOpen) {
+    logger.info(`[status] ${sessionId} skip ${type} ev=${params.ev || "-"} aid=${params.aid}`);
+    return;
+  }
 
   // The CLI's own conversation id — stored before the broadcast below carries it
   const conversationId = conversationIdFrom(tool, params);

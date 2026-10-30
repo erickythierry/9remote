@@ -379,6 +379,8 @@ export function cancelDoneCommit(sessionId: string) {
   pendingDoneCommits.delete(sessionId);
 }
 
+export const isDonePending = (sessionId: string) => pendingDoneCommits.has(sessionId);
+
 export function scheduleDoneCommit(sessionId: string, commit: () => void) {
   if (!sessionId || typeof commit !== "function") return;
   // Two sources report the same done (a hook's Stop and the stream's

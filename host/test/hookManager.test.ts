@@ -135,7 +135,8 @@ await test("curl command targets localhost notify endpoint", () => {
   m.enableToolHook("claude");
   const settings = JSON.parse(fs.readFileSync(path.join(TMP, ".claude", "settings.json"), "utf8"));
   const c = cmd(settings.hooks.UserPromptSubmit[0]);
-  assert.ok(c.startsWith("csid=$(cat"), "captures claude session id from hook stdin");
+  assert.ok(c.startsWith("p=$(cat"), "reads the hook payload from stdin once");
+  assert.ok(c.includes("&aid=$aid"), "forwards the sub-agent id to notify");
   assert.ok(c.includes("&csid=$csid"), "forwards claude session id to notify");
   assert.ok(c.includes("command -v curl"), "curl-guarded");
   assert.ok(c.includes(NOTIFY_URL), "hits configured notify URL");

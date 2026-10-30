@@ -556,6 +556,7 @@ export function broadcastAiStatus(sessionId: string, state: string, tool: string
   const conversationId = data?.sessionId || data?.threadId || getConversation(sessionId)?.id || null;
   const before = getStatus(sessionId);
   const entry = applyEvent({ type: state, sessionId, tool });
+  if (entry?.state !== before?.state) termLogger.info(`[status] ${sessionId} ${before?.state || "none"} -> ${entry?.state || "none"} from=ai`);
   // One user action reaches here twice (the prompt handler and the session's own event
   // both say "working"), and a stray `done` on an idle session is refused by applyEvent.
   // Broadcast the map, not the request: a no-op is not a change worth re-rendering for.

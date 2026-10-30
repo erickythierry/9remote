@@ -67,8 +67,10 @@ const BINARIES: Record<string, string> = {
 // Capture conversation ID from stdin JSON to support relaunching later.
 const buildCurlCmd = (type: string, tool: string, { sessionId = false } = {}) => {
   const key = sessionId ? hookSessionIdKeys(tool)[0] : null;
-  const prefix = key ? `csid=$(cat 2>/dev/null | sed -n 's/.*"${key}" *: *"\\([^"]*\\)".*/\\1/p'); ` : "";
-  const extra = key ? "&csid=$csid" : "";
+  const field = (k: string) => `$(printf %s "$p" | sed -n 's/.*"${k}" *: *"\\([^"]*\\)".*/\\1/p')`;
+  // agent_id marks a hook from a sub-agent or a background fork, not from the main turn.
+  const prefix = key ? `p=$(cat 2>/dev/null); csid=${field(key)}; aid=${field("agent_id")}; ev=${field("hook_event_name")}; ` : "";
+  const extra = key ? "&csid=$csid&aid=$aid&ev=$ev" : "";
   return `${prefix}command -v curl >/dev/null 2>&1 && curl -s --connect-timeout 1 --max-time 2 "${NOTIFY_URL}?type=${type}&sessionId=$NINE_REMOTE_SESSION_ID${extra}&tool=${tool}" > /dev/null 2>&1 || true`;
 };
 
