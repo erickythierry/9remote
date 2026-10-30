@@ -19,6 +19,7 @@ const CAT_COLORS: Record<string, string> = {
   "ai-hydrate": "text-pink-400",
   "ai-page": "text-amber-400",
   "ai-gate": "text-red-400",
+  "ai-turn": "text-lime-400",
 };
 
 function fmtTime(ts: number): string {

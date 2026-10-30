@@ -15,7 +15,7 @@ import { estimateMessageBytes } from "../lib/messageWindow";
 import { collectOlderPage } from "../lib/olderPaging";
 import { createRetryLadder, shouldApplyHydrateAck } from "../lib/hydrateRetry";
 import { classifyLiveEvent, fetchedIsSafe } from "../lib/gapFill";
-import { termLog } from "@/shared/utils/termLog";
+import { termLog, isTermLogEnabled } from "@/shared/utils/termLog";
 import { RECOVER_DEBOUNCE_MS, PEEK_TIMEOUT_MS } from "@/features/terminal/constants/terminalConfig";
 import { RESOLVE_ACK_TIMEOUT_MS, PROMPT_ACK_TIMEOUT_MS } from "../constants";
 import { emitPromptAck } from "../lib/promptAck";
@@ -451,8 +451,20 @@ export function useAiSession({
 
   // Dispatch-only by design: subscribing here would rebuild the hook per streamed frame.
 
+  // Names the event behind each turn-flag flip, so a spinner that outlives its turn can be traced.
+  const lastAppliedRef = useRef("");
+  useEffect(() => {
+    if (!sessionId || !isTermLogEnabled()) return;
+    return useAiStore.subscribe((s, prev) => {
+      const now = s.bySession[sessionId]?.isTurnRunning;
+      if (now === prev.bySession[sessionId]?.isTurnRunning) return;
+      termLog("ai-turn", { sessionId, isTurnRunning: now, after: lastAppliedRef.current, hydrating: hydratingRef.current });
+    });
+  }, [sessionId]);
+
   // One door for live and replay alike: the host is the source of truth.
   const applyEvent = useCallback((sid: string, event: string, data: any) => {
+    lastAppliedRef.current = `${event}${data?.replay ? "(replay)" : ""}`;
     switch (event) {
       case "user_message":
         // `replay` marks a re-sent log: the prompt already happened, so it opens no turn.

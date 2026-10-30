@@ -11,6 +11,11 @@ const buffer: TermLogEntry[] = [];
 const listeners = new Set<TermLogListener>();
 
 const isBrowser = typeof window !== "undefined";
+// The APK's WebView has no console: `?termLog=1` / `?termLog=0` flips the flag from the URL.
+const urlFlag = isBrowser ? new URLSearchParams(location.search).get("termLog") : null;
+if (urlFlag === "1" || urlFlag === "0") {
+  try { localStorage.setItem("9remote:termLog", urlFlag); } catch {}
+}
 // Auto-enable on dev subdomain (dev.9remote.cc) or explicit opt-in. Production
 // (9remote.cc) and host workspace are off by default — zero overhead, no buffer growth.
 const enabled = isBrowser && (
