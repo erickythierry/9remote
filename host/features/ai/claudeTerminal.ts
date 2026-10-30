@@ -44,6 +44,7 @@ function isTrustedFolder(cwd: string, launcher: string = ""): boolean {
 }
 // A sub-agent's steps nest under its Task row; its prose and prompts stay out of the main log.
 const CHILD_EVENTS = new Set(["tool_start", "tool_result"]);
+const TURN_WORK_EVENTS = new Set(["user_message", "thinking", "delta", "tool_start"]);
 
 // The ack names the file the harness writes the shell's output to; only `<id>.output` in a tasks dir is followed.
 const OUTPUT_FILE_RE = /Output is being written to:\s*(\S+?\/tasks\/[A-Za-z0-9_-]+\.output)\b/;
@@ -124,8 +125,6 @@ export class ClaudeTerminal {
   questions = new Map<string, (answer: any) => void>();
   // Last conversation id the hooks reported; only a NEW one moves the chat (a /clear must not snap back).
   followed: string | null = null;
-  // A working status older than the last turn end is that turn's leftover (done waits out DONE_DEBOUNCE_MS).
-  turnEndedAt = 0;
   booting: Promise<void> | null = null;
 
   constructor(session: AiSession) {
@@ -331,12 +330,6 @@ export class ClaudeTerminal {
       s.attachmentOffset = null;
       this.file = null;
     }
-    // A prompt typed in the terminal starts a turn the chat did not send.
-    const status = getStatus(s.id);
-    if (!s.isTurnRunning && status?.state === "working" && status.since > this.turnEndedAt) {
-      s.isTurnRunning = true;
-      s.turnStartedAt = Date.now();
-    }
     if (!s.cliSessionId) return;
     if (!this.file) {
       this.file = findTranscript(s.cwd, s.cliSessionId);
@@ -419,7 +412,12 @@ export class ClaudeTerminal {
       this.trackShell(ev);
       // Attachments come in through the session's own turn-end read; a second door would draw them twice.
       if (this.muted || (ev.event === "cli_event" && ev.data?.type === "attachment")) return;
-      if (ev.event === "turn_complete") this.turnEndedAt = Date.now();
+      // A prompt typed in the terminal starts a turn the chat did not send; only its transcript proves it,
+      // since a hook's working also fires for the CLI's side work after a turn ends.
+      if (!s.isTurnRunning && TURN_WORK_EVENTS.has(ev.event)) {
+        s.isTurnRunning = true;
+        s.turnStartedAt = Date.now();
+      }
       if (ev.event === "user_message") {
         const textKey = echoKey(String(ev.data?.text || ""));
         const qIdx = (s.promptQueue || []).findIndex((i) => i.key === textKey || echoKey(i.text) === textKey);
