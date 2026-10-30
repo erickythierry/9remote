@@ -151,6 +151,8 @@ export function taskNotificationFrom(record: any): TaskNotificationEvent | null 
     ? content
     : (content || []).map((c: any) => (typeof c === "string" ? c : c?.text || "")).join(" ");
   if (!text.includes("<task-notification>")) return null;
+  // A Monitor event (<event>, no <status>) reports progress; the task keeps running.
+  if (text.includes("<event>") && !taskField(text, "status")) return null;
   const taskId = taskField(text, "task-id");
   if (!taskId) return null;
   const toolUseId = taskField(text, "tool-use-id");
