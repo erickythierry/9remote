@@ -7,6 +7,8 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { SearchAddon } from "@xterm/addon-search";
 import { ImageAddon } from "@xterm/addon-image";
+import { ClipboardAddon, type ClipboardSelectionType } from "@xterm/addon-clipboard";
+import { copyText } from "@/shared/utils/clipboard";
 import { THEMES, resolveTerminalTheme } from "@/features/terminal/constants/themes";
 import { termLog } from "@/shared/utils/termLog";
 import {
@@ -413,6 +415,18 @@ export function useXTerm({
     // Coalesce high-frequency output bursts into one write per animation frame
     const batcher = createWriteBatcher(term);
     writeBatcherRef.current = batcher;
+
+    // OSC 52 write-only: agent CLIs (Claude Code, pi) copy through it; remote clipboard reads stay blocked
+    if (ADDONS.clipboard) {
+      term.loadAddon(new ClipboardAddon(undefined, {
+        readText: () => "",
+        writeText: (_sel: ClipboardSelectionType, text: string) => {
+          // Skip OSC 52 replayed from history on reconnect: only honor it right after a real gesture
+          if (navigator.userActivation?.isActive === false) return;
+          void copyText(text);
+        }
+      }));
+    }
 
     if (ADDONS.search) {
       searchAddonRef.current = new SearchAddon();

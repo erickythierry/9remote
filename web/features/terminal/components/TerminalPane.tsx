@@ -3,6 +3,7 @@
 import { useEffect, useRef, memo, useState, useCallback } from "react";
 import "@xterm/xterm/css/xterm.css";
 import SelectionActionButton from "@/features/terminal/components/SelectionActionButton";
+import { copyText } from "@/shared/utils/clipboard";
 import { useWorkspaceChangedCount } from "@/features/terminal/hooks/useWorkspaceChangedCount";
 import { useXTerm } from "@/features/terminal/hooks/useXTerm";
 import { THEMES, resolveTerminalTheme } from "@/features/terminal/constants/themes";
@@ -375,7 +376,7 @@ function TerminalPane({
             text={selection.text}
             position={selection}
             onOpenUrl={(url) => window.open(url, "_blank")}
-            onCopy={(txt) => { try { navigator.clipboard?.writeText(txt); } catch {} }}
+            onCopy={(txt) => { void copyText(txt); }}
             onAddToNote={(txt) => { setSelection(null); setNoteAppend(txt); setNoteModalOpen(true); }}
             onClose={() => { termRef.current?.clearSelection(); setSelection(null); }}
           />
