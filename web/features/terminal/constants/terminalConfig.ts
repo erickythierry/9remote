@@ -274,7 +274,13 @@ export const TOUCH_SCROLL = {
 export const TOUCH_SELECT = {
   longPressMs: 450,
   moveTolerance: 10,
+  handleRadiusPx: 28,
   wordChars: /[A-Za-z0-9._\-/~:@]/
+};
+
+export const SELECTION_BAR = {
+  offsetPx: 64,
+  edgePx: 120
 };
 
 export const PATH_SUGGEST = {

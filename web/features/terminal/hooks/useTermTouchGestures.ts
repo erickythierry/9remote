@@ -10,7 +10,7 @@ export interface UseTermTouchGesturesOptions {
   isVisible: boolean;
   bus: any;
   sessionId: string;
-  onSelectionMadeRef: MutableRefObject<((sel: string, pos: { x: number; y: number }) => void) | null | undefined>;
+  onSelectionMadeRef: MutableRefObject<((sel: string | null, pos: { x: number; y: number }) => void) | null | undefined>;
   awaitingTuiOutputRef: MutableRefObject<boolean>;
   maybeFetchHistoryRef: MutableRefObject<(() => void) | null | undefined>;
   userAtTopRef: MutableRefObject<boolean>;
@@ -135,7 +135,9 @@ export function useTermTouchGestures({
     // --- Long-press text selection (mobile) ---
     let longPressTimer: ReturnType<typeof setTimeout> | null = null;
     let selecting = false;
-    let selStart: { col: number; row: number } | null = null; // {col, row} absolute buffer coords
+    type Cell = { col: number; row: number }; // absolute buffer coords
+    let selAnchor: Cell | null = null; // fixed end while dragging
+    let selRange: { start: Cell; end: Cell } | null = null; // inclusive, kept after release for handle drags
     let startX = 0, startY = 0, curX = 0, curY = 0, moved = false;
 
     // Cached during select drag so touchToCell skips getBoundingClientRect() per frame
@@ -152,27 +154,57 @@ export function useTermTouchGestures({
       return { col, row: t.buffer.active.viewportY + vRow };
     };
 
-    const selectWordAt = ({ col, row }: { col: number; row: number }) => {
+    const before = (a: Cell, b: Cell) => a.row < b.row || (a.row === b.row && a.col <= b.col);
+
+    // Stream selection: xterm wraps a length past the row end onto the next rows
+    const applyRange = (a: Cell, b: Cell) => {
       const t = termRef.current;
-      const line = t.buffer.active.getLine(row);
-      if (!line) return;
-      const text = line.translateToString(false);
+      const [start, end] = before(a, b) ? [a, b] : [b, a];
+      selRange = { start, end };
+      t.select(start.col, start.row, (end.row - start.row) * t.cols + end.col - start.col + 1);
+    };
+
+    const wordAt = ({ col, row }: Cell): { start: Cell; end: Cell } => {
+      const line = termRef.current.buffer.active.getLine(row);
+      const text = line ? line.translateToString(false) : "";
       const isWord = (c: string) => c && TOUCH_SELECT.wordChars.test(c);
-      if (!isWord(text[col])) { t.select(col, row, 1); return; }
+      if (!isWord(text[col])) return { start: { col, row }, end: { col, row } };
       let start = col, end = col;
       while (start > 0 && isWord(text[start - 1])) start--;
       while (end < text.length - 1 && isWord(text[end + 1])) end++;
-      t.select(start, row, end - start + 1);
+      return { start: { col: start, row }, end: { col: end, row } };
     };
 
-    const extendSelection = (cell: { col: number; row: number }) => {
+    let word: { start: Cell; end: Cell } | null = null; // long-pressed word, kept whole while extending
+    const extendSelection = (cell: Cell) => {
+      if (word) {
+        if (before(cell, word.start)) applyRange(cell, word.end);
+        else applyRange(word.start, before(cell, word.end) ? word.end : cell);
+        return;
+      }
+      if (selAnchor) applyRange(selAnchor, cell);
+    };
+
+    // Center of a cell in viewport px, to hit-test a touch against the selection ends
+    const cellCenter = ({ col, row }: Cell) => {
       const t = termRef.current;
-      if (!selStart) return;
-      if (cell.row === selStart.row) {
-        const min = Math.min(cell.col, selStart.col);
-        t.select(min, cell.row, Math.abs(cell.col - selStart.col) + 1);
-      } else {
-        t.selectLines(Math.min(cell.row, selStart.row), Math.max(cell.row, selStart.row));
+      const rect = xtermScreen.getBoundingClientRect();
+      return {
+        x: rect.left + (col + 0.5) * (rect.width / t.cols),
+        y: rect.top + (row - t.buffer.active.viewportY + 0.5) * (rect.height / t.rows)
+      };
+    };
+    const nearCell = (cell: Cell, x: number, y: number) => {
+      const c = cellCenter(cell);
+      return Math.hypot(c.x - x, c.y - y) <= TOUCH_SELECT.handleRadiusPx;
+    };
+
+    const clearSel = () => {
+      selRange = null;
+      word = null;
+      if (termRef.current?.hasSelection()) {
+        termRef.current.clearSelection();
+        onSelectionMadeRef.current?.(null, { x: 0, y: 0 });
       }
     };
 
@@ -187,14 +219,27 @@ export function useTermTouchGestures({
       accumulated = 0;
       selecting = false;
       moved = false;
-      termRef.current?.clearSelection();
+      // Touch on a selection end: drag that end, the other one stays put
+      if (selRange && termRef.current?.hasSelection()) {
+        const grabStart = nearCell(selRange.start, startX, startY);
+        const grabEnd = !grabStart && nearCell(selRange.end, startX, startY);
+        if (grabStart || grabEnd) {
+          selAnchor = grabStart ? selRange.end : selRange.start;
+          word = null;
+          selecting = true;
+          selRect = xtermScreen.getBoundingClientRect();
+          onSelectionMadeRef.current?.(null, { x: 0, y: 0 });
+          return;
+        }
+      }
+      clearSel();
       longPressTimer = setTimeout(() => {
         if (moved || !termRef.current) return;
         selecting = true;
         vibrate();
         selRect = xtermScreen.getBoundingClientRect();
-        selStart = touchToCell(startX, startY);
-        selectWordAt(selStart);
+        word = wordAt(touchToCell(startX, startY));
+        applyRange(word.start, word.end);
       }, TOUCH_SELECT.longPressMs);
     };
 

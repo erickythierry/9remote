@@ -133,7 +133,7 @@ function TerminalPane({
     bus: activeBus, sessionId, theme, terminalTheme, isVisible, isFocused, containerRef, mountDelay,
     bgKey: bgSrc || bgColor ? paneBgKey : "none",
     onInput: handleClear,
-    onSelectionMade: (text, pos) => setSelection({ text, x: pos.x, y: pos.y }),
+    onSelectionMade: (text, pos) => setSelection(text ? { text, x: pos.x, y: pos.y } : null),
   });
 
 // Scroll wrapper so the cursor/content stays visible after a viewport shrink (soft KB).
@@ -376,7 +376,7 @@ function TerminalPane({
             text={selection.text}
             position={selection}
             onOpenUrl={(url) => window.open(url, "_blank")}
-            onCopy={(txt) => { void copyText(txt); }}
+            onCopy={(txt) => { void copyText(txt); termRef.current?.clearSelection(); }}
             onAddToNote={(txt) => { setSelection(null); setNoteAppend(txt); setNoteModalOpen(true); }}
             onClose={() => { termRef.current?.clearSelection(); setSelection(null); }}
           />

@@ -242,7 +242,7 @@ export interface UseXTermOptions {
   mountDelay?: number;
   bgKey?: string;
   onInput?: (sessionId: string) => void;
-  onSelectionMade?: (selection: string, position: { x: number; y: number }) => void;
+  onSelectionMade?: (selection: string | null, position: { x: number; y: number }) => void;
 }
 
 export interface UseXTermResult {
