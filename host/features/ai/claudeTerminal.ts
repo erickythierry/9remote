@@ -126,6 +126,8 @@ export class ClaudeTerminal {
   // Last conversation id the hooks reported; only a NEW one moves the chat (a /clear must not snap back).
   followed: string | null = null;
   booting: Promise<void> | null = null;
+  // The permission mode the TUI was launched with; null when the user started it in the terminal.
+  launchedMode: string | null = null;
 
   constructor(session: AiSession) {
     this.session = session;
@@ -178,6 +180,18 @@ export class ClaudeTerminal {
     return this.booting;
   }
 
+  relaunch() {
+    if (!this.booting) this.booting = this.restart().finally(() => { this.booting = null; });
+    return this.booting;
+  }
+
+  async restart() {
+    await this.type("/exit");
+    if (!await this.settle(async () => isShellProcess(await this.foreground()))) throw new Error("Claude Code did not exit to change the permission mode");
+    logger.info(`session ${this.session.id}: TUI relaunch for mode ${this.session.permissionMode}`);
+    await this.boot();
+  }
+
   async boot() {
     if (await this.tuiRunning()) return;
     const s = this.session;
@@ -192,6 +206,7 @@ export class ClaudeTerminal {
     const fresh = !findTranscript(s.cwd, s.cliSessionId);
     setConversationId(s.id, AI_ENGINES.CLAUDE, s.cliSessionId, "resume");
     this.followed = s.cliSessionId;
+    this.launchedMode = s.permissionMode || s.options.defaultMode || "";
     daemonClient.sendInput(s.id, `${CLEAR_LINE}${this.launchLine(fresh)}\r`);
     logger.info(`session ${s.id}: TUI ${fresh ? "start" : "resume"} ${s.cliSessionId}`);
     if (!await this.settle(() => this.tuiRunning())) throw new Error("Claude Code did not start in this terminal");
@@ -300,10 +315,16 @@ export class ClaudeTerminal {
     daemonClient.sendInput(id, "\r");
   }
 
+  needsRelaunch(mode?: string) {
+    return Boolean(mode) && mode !== this.launchedMode;
+  }
+
   // Model/effort through the TUI's own commands: the running CLI switches with no restart.
+  // The mode has no command, so a new one relaunches the TUI on the same conversation (launchLine applies all three).
   // Only between turns — the session defers a pick made mid-turn (see setOptions).
-  async applyOptions({ model, effort }: { model?: string; effort?: string }) {
+  async applyOptions({ model, effort, mode }: { model?: string; effort?: string; mode?: string }) {
     if (!await this.tuiRunning()) return;
+    if (this.needsRelaunch(mode)) return this.relaunch();
     if (model && OPTION_RE.test(model)) await this.type(`/model ${model}`);
     if (effort && OPTION_RE.test(effort)) {
       await this.settle(async () => true);

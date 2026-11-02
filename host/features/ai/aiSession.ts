@@ -1056,7 +1056,8 @@ export class AiSession {
   }
 
   // Foreground tasks (not is_backgrounded) cannot outlive the turn that started them.
-  _settleForegroundTasks(includeBackground = false) {
+  // Each started task with no task_notification yet, once.
+  _openTasks(): { taskId: string; rec: any }[] {
     const ended = new Set<string>();
     for (const ev of this.history || []) {
       if (ev.event !== "cli_event") continue;
@@ -1064,14 +1065,22 @@ export class AiSession {
       const taskId = ev.data?.record?.task_id || ev.data?.task_id;
       if (subtype === "task_notification" && taskId) ended.add(taskId);
     }
+    const open: { taskId: string; rec: any }[] = [];
     for (const ev of this.history || []) {
       if (ev.event !== "cli_event" || ev.data?.subtype !== "task_started") continue;
       const rec = ev.data?.record || {};
       const taskId = rec.task_id || ev.data?.task_id;
       if (!taskId || ended.has(taskId)) continue;
+      ended.add(taskId);
+      open.push({ taskId, rec });
+    }
+    return open;
+  }
+
+  _settleForegroundTasks(includeBackground = false) {
+    for (const { taskId, rec } of this._openTasks()) {
       // An async sub-agent outlives the turn that launched it; only its task_notification ends it.
       if (includeBackground || (!rec.is_backgrounded && !rec.async_launch)) {
-        ended.add(taskId);
         this.emitNormalized("cli_event", {
           type: "system",
           subtype: "task_notification",
@@ -1386,7 +1395,7 @@ export class AiSession {
     this.restartPending = false;
     const resume = this.pendingResume || null;
     this.pendingResume = null;
-    if (this.terminal) return this._applyTerminalOptions({ model: this.model, effort: this.effort });
+    if (this.terminal) return this._applyTerminalOptions({ model: this.model, effort: this.effort, mode: this.permissionMode || undefined });
     const fetch = this.adapter?.setOptions?.({ mode: this.permissionMode, model: this.model, effort: this.effort, ...(resume ? { resume } : {}) });
     if (fetch?.then) fetch.then((f: any) => this._replay(f));
   }
@@ -1397,8 +1406,12 @@ export class AiSession {
   }
 
   // The running TUI switches by its own commands; init tells every pane the new pick.
-  _applyTerminalOptions(opts: { model?: string; effort?: string }) {
-    this.terminal!.applyOptions(opts).catch((err: any) => logger.warn(`[ai] ${this.id} options: ${err.message}`));
+  _applyTerminalOptions(opts: { model?: string; effort?: string; mode?: string }) {
+    // A new mode relaunches the TUI, which kills its background tasks: held until a turn ends with none left.
+    const { mode, ...rest } = opts;
+    const hold = Boolean(mode) && this.terminal!.needsRelaunch(mode) && this._openTasks().length > 0;
+    if (hold) this.restartPending = true;
+    this.terminal!.applyOptions(hold ? rest : opts).catch((err: any) => logger.warn(`[ai] ${this.id} options: ${err.message}`));
     this.emitNormalized("init", { ...this.metadata(), effort: this.effort, permissionMode: this.permissionMode });
     this._saveKvState();
     this.flushSaveSnapshot();
