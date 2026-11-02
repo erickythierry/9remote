@@ -103,6 +103,9 @@ const ACK_PATTERNS = [
   /^Command running in background with ID:\s*([A-Za-z0-9_-]+)/i,
   // A foreground Bash past its timeout: "Command did not complete within its 120s timeout and was moved to the background (ID: b6qj92wg4)".
   /^Command did not complete[^]{0,200}?moved to the background \(ID:\s*([A-Za-z0-9_-]+)\)/i,
+  // Ctrl+B in the TUI, and a shell moved aside so a queued message can reach the model.
+  /^Command was manually backgrounded by user with ID:\s*([A-Za-z0-9_-]+)/i,
+  /^Command was moved to the background \(ID:\s*([A-Za-z0-9_-]+)\)/i,
   // `Monitor` watches a command and returns at once: "Monitor started (task b301ffx4j,
   // timeout 600000ms). You will be notified on each event." Measured on this machine: 44
   // of these, every one closing its row immediately while the task it named kept running.
@@ -182,9 +185,18 @@ export interface AsyncHandleResult {
   handle: true;
 }
 
+const TASK_ID_RE = /^[A-Za-z0-9_-]+$/;
+
+// The CLI's own `backgroundTaskId` on a tool result; a timed-out Bash puts its stdout BEFORE the text ack, so only this field names it.
+export function backgroundTaskId(record: any): string {
+  const id = record?.toolUseResult?.backgroundTaskId ?? record?.tool_use_result?.backgroundTaskId;
+  return typeof id === "string" && TASK_ID_RE.test(id) ? id : "";
+}
+
 /** The handle an async launch ack names, or null when this result is an ordinary one. */
-export function asyncHandle(output: string = "", name: string = ""): AsyncHandleResult | null {
+export function asyncHandle(output: string = "", name: string = "", taskId: string = ""): AsyncHandleResult | null {
   if (!LAUNCHER_TOOLS.has(name)) return null;
+  if (taskId) return { id: taskId, handle: true };
   const text = (typeof output === "string" ? output : "").replace(JSON_TEXT_PREFIX, "").trimStart();
   if (!text) return null;
   for (const re of ACK_PATTERNS) {

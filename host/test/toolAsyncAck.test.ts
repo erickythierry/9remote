@@ -11,7 +11,7 @@
 //
 // Run: node agent/test/toolAsyncAck.test.mjs
 import assert from "node:assert/strict";
-import { asyncHandle } from "../features/ai/toolEvent.js";
+import { asyncHandle, backgroundTaskId } from "../features/ai/toolEvent.js";
 
 let pass = 0, fail = 0;
 const test = (name: string, fn: () => void | Promise<void>) => {
@@ -56,6 +56,20 @@ test("an ordinary result is not an ack, whoever ran it", () => {
     assert.equal(asyncHandle("total 4\nfile.txt", name), null, name);
     assert.equal(asyncHandle("", name), null, name);
   }
+});
+
+test("the user and message-delivery backgrounding acks name their shell", () => {
+  assert.equal(asyncHandle("Command was manually backgrounded by user with ID: bm2n34f7x. Output is being written to: /tmp/x", "Bash")?.id, "bm2n34f7x");
+  assert.equal(asyncHandle("Command was moved to the background (ID: bvpla46d1) so that a message that arrived while it was running can reach you", "Bash")?.id, "bvpla46d1");
+});
+
+test("the record's backgroundTaskId names the shell when stdout comes before the ack", () => {
+  const out = "53:    modo = sys.argv[1]\nCommand did not complete within its 600s timeout and was moved to the background (ID: btn0oh3gz).";
+  assert.equal(asyncHandle(out, "Bash"), null);
+  const id = backgroundTaskId({ toolUseResult: { backgroundTaskId: "btn0oh3gz", timedOutAfterMs: 600000 } });
+  assert.equal(asyncHandle(out, "Bash", id)?.id, "btn0oh3gz");
+  assert.equal(asyncHandle(out, "Read", id), null, "still gated by the tool name");
+  assert.equal(backgroundTaskId({ toolUseResult: { backgroundTaskId: "a b" } }), "");
 });
 
 // ── through the ADAPTER, on a real record ──

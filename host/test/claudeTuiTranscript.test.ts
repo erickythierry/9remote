@@ -31,6 +31,24 @@ test("an async Agent ack yields a task_started carrying the tool_use_id and labe
   assert.equal(started.data.record.async_launch, true);
 });
 
+test("a Bash moved to the background after its stdout opens a shell task from backgroundTaskId", () => {
+  const evs = collect([
+    { type: "assistant", message: { content: [{ type: "tool_use", id: "tu2", name: "Bash", input: { command: "python3 train.py e5", description: "Train e5" } }] } },
+    {
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "tu2", content: "epoch 1\nCommand did not complete within its 600s timeout and was moved to the background (ID: btn0oh3gz). Output is being written to: /tmp/claude-1000/p/s/tasks/btn0oh3gz.output." }] },
+      toolUseResult: { stdout: "epoch 1", backgroundTaskId: "btn0oh3gz", timedOutAfterMs: 600000 }
+    }
+  ]);
+  const result = evs.find((e) => e.event === "tool_result");
+  assert.equal(result.data.status, "running");
+  assert.equal(result.data.handle, "btn0oh3gz");
+  const started = evs.find((e) => e.data?.subtype === "task_started");
+  assert.equal(started.data.record.task_id, "btn0oh3gz");
+  assert.equal(started.data.record.is_backgrounded, true);
+  assert.equal(started.data.record.description, "Train e5");
+});
+
 test("a stop_hook_summary reaches the pane without the hook command lines", () => {
   const [ev] = collect([{
     type: "system", subtype: "stop_hook_summary", hookCount: 2,

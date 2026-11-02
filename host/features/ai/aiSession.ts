@@ -900,7 +900,8 @@ export class AiSession {
       }
     }
     if (event === "tool_result") {
-      if (data?.async && data?.handle) this.armAsyncWatchdog(data.id, data.parentToolUseId);
+      // A TUI shell is tailed and ends on its task notification; a quiet one is still running.
+      if (data?.async && data?.handle && !this.terminal?.shells.has(data.id)) this.armAsyncWatchdog(data.id, data.parentToolUseId);
       else if (data?.id) this.clearAsyncWatchdog(data.id);
     }
 

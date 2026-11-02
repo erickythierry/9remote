@@ -7,7 +7,7 @@ import { LocalProc } from "../proc/localProc.js";
 import { decodeLine } from "../proc/daemonProc.js";
 import { claudeBin } from "../constants.js";
 import { splitCommand } from "../../terminal/customAgents.js";
-import { asyncHandle, taskNotificationFrom } from "../toolEvent.js";
+import { asyncHandle, backgroundTaskId, taskNotificationFrom } from "../toolEvent.js";
 import { JsonRpcClient } from "../proc/jsonRpcClient.js";
 
 // A rewind of a long session is not instant; timeout is opt-in — see JsonRpcClient.request.
@@ -455,7 +455,8 @@ export class ClaudeAdapter {
           const isError = Boolean(item.is_error);
           const output = typeof item.content === "string" ? item.content : JSON.stringify(item.content);
           // A launch ack is not a result — reporting it `done` finished the row while the work ran on.
-          const async = isError ? null : asyncHandle(output, this.toolCalls.get(item.tool_use_id)?.name || "");
+          const results = contents.filter((c: any) => c.type === "tool_result").length;
+          const async = isError ? null : asyncHandle(output, this.toolCalls.get(item.tool_use_id)?.name || "", results === 1 ? backgroundTaskId(data) : "");
           const call = this.toolCalls.get(item.tool_use_id);
           this.onEvent?.("tool_result", {
             id: item.tool_use_id,

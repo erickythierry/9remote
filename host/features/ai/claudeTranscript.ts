@@ -4,7 +4,7 @@ import path from "path";
 import os from "os";
 import { isInjectedTurn } from "../terminal/agentHistory.js";
 import { buildEditDiff, DIFF_TOOL_NAMES, collapsePersisted } from "./adapters/claudeAdapter.js";
-import { toolStart, toolResult, asyncHandle, taskNotificationFrom } from "./toolEvent.js";
+import { toolStart, toolResult, asyncHandle, backgroundTaskId, taskNotificationFrom } from "./toolEvent.js";
 import { addSessionUsage, type SessionUsageStats } from "./usage.js";
 import { claudeProjectsDirs } from "./claudeProfile.js";
 
@@ -245,7 +245,7 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
         const call = toolCalls.get(tr.tool_use_id);
         toolCalls.delete(tr.tool_use_id);
         // A launch ack is not a result — same rule as the live door, or a reload shows running work as finished.
-        const async = isError ? null : asyncHandle(output, call?.name || "");
+        const async = isError ? null : asyncHandle(output, call?.name || "", toolResults.length === 1 ? backgroundTaskId(d) : "");
         push(toolResult({
             id: tr.tool_use_id,
             // The result carries only the id — the name comes from the call it answers.
