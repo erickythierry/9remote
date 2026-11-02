@@ -24,6 +24,8 @@ export type AiMessage = {
 };
 export type AiStats = Record<string, number>;
 type Baseline = { inputTokens: number; outputTokens: number };
+// A session total when the engine reports one; outputTokens is per call for some engines and per turn for others.
+export const outputTotal = (stats: AiStats | null | undefined) => stats?.sessionOutputTokens || stats?.outputTokens || 0;
 export type AiSessionState = {
   messages: AiMessage[];
   isTurnRunning: boolean;
@@ -405,7 +407,7 @@ export const useAiStore = create<AiStore>()(
                   // The on-screen counter is this turn's usage — remember where the session total stood.
                   turnBaseline: {
                     inputTokens: curr.stats.inputTokens || 0,
-                    outputTokens: curr.stats.outputTokens || 0
+                    outputTokens: outputTotal(curr.stats)
                   },
                   activeBlocked: null
                 }),
@@ -853,7 +855,7 @@ export const useAiStore = create<AiStore>()(
                 // No baseline from the replay — a mid-turn rejoin shows the session total.
                 turnBaseline: isTurnRunning
                   ? { inputTokens: 0, outputTokens: 0 }
-                  : { inputTokens: stats?.inputTokens || 0, outputTokens: stats?.outputTokens || 0 },
+                  : { inputTokens: stats?.inputTokens || 0, outputTokens: outputTotal(stats) },
                 metadata: { ...curr.metadata, ...metadata },
                 stats: stats ? mergeStats(curr.stats, stats) : curr.stats,
                 // A blocked card with no matching replay event is stale.

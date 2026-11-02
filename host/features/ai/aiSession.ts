@@ -860,7 +860,9 @@ export class AiSession {
       // A prompt wakes a sleeping pane; the respawn itself is _startManaged's.
       this.asleep = false;
     } else if (TURN_END_EVENTS.has(event)) {
-      if (this.turnStartedAt) this.lastTurnMs = now - this.turnStartedAt;
+      // The CLI's own span beats this clock, which also counts the TUI boot and the typing.
+      if (data?.durationMs > 0) this.lastTurnMs = data.durationMs;
+      else if (this.turnStartedAt) this.lastTurnMs = now - this.turnStartedAt;
       // Copied, not mutated — capEvent may hand back the adapter's own object.
       data = { ...data, turnMs: this.lastTurnMs };
     }

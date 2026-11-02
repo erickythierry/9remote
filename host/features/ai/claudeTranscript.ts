@@ -333,8 +333,9 @@ export function claudeRecordParser(push: (ev: ClaudeEvent) => void) {
         event: "cli_event",
         data: { type: "system", subtype: d.subtype || "", record: slimSystemRecord(d) }
       });
-      if (d.subtype === "stop_hook_summary" || d.subtype === "turn_duration") {
-        push({ event: "turn_complete", data: { stats: {} } });
+      // turn_duration is the turn's last record (after stop_hook_summary) and carries the TUI's own span.
+      if (d.subtype === "turn_duration") {
+        push({ event: "turn_complete", data: { stats: {}, ...(d.durationMs > 0 ? { durationMs: d.durationMs } : null) } });
       }
     } else if (d.type === "assistant" && d.message) {
       const u = d.message.usage;

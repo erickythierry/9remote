@@ -49,6 +49,16 @@ test("a Bash moved to the background after its stdout opens a shell task from ba
   assert.equal(started.data.record.description, "Train e5");
 });
 
+test("only turn_duration ends a TUI turn, carrying the CLI's own span", () => {
+  const evs = collect([
+    { type: "system", subtype: "stop_hook_summary", hookCount: 1, hookInfos: [], hookErrors: [] },
+    { type: "system", subtype: "turn_duration", durationMs: 13042 }
+  ]);
+  const ends = evs.filter((e) => e.event === "turn_complete");
+  assert.equal(ends.length, 1);
+  assert.equal(ends[0].data.durationMs, 13042);
+});
+
 test("a stop_hook_summary reaches the pane without the hook command lines", () => {
   const [ev] = collect([{
     type: "system", subtype: "stop_hook_summary", hookCount: 2,

@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
-import { useAiStore } from "@/shared/stores/aiStore";
+import { useAiStore, outputTotal } from "@/shared/stores/aiStore";
 import { useConnectionStore } from "@/shared/stores/connectionStore";
 import { useAllSessionStatus } from "@/shared/transport/hostConn";
 import { MessageBubble } from "./MessageBubble";
@@ -121,7 +121,7 @@ const AiTurnStatus = memo(function AiTurnStatus({ sessionId, engine = "", hydrat
   const lastMsg = turnMessages[turnMessages.length - 1] || null;
 
   // The host reports a session-running total; the line shows only this turn's share.
-  const turnOutput = Math.max(0, (stats?.outputTokens || 0) - (turnBaseline?.outputTokens || 0));
+  const turnOutput = Math.max(0, outputTotal(stats) - (turnBaseline?.outputTokens || 0));
 
   const [now, setNow] = useState(Date.now());
 
