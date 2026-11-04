@@ -1,12 +1,12 @@
 "use client";
 
 import { memo, useEffect, useMemo, useState } from "react";
-import { Bot, Terminal, Square, Loader2 } from "@/shared/components/ui/Icon";
+import { Bot, Terminal, Square, Loader2, ChevronDown, Check, CheckCircle2, AlertCircle, Ban } from "@/shared/components/ui/Icon";
 import { agentIconUrl, AGENT_ICON_CLS } from "@/features/terminal/constants/agentCli";
 import { vibrate } from "@/shared/utils/vibration";
 import { useAiStore } from "@/shared/stores/aiStore";
 import { findTaskTool } from "../../lib/toolTree";
-import { taskElapsedMs } from "../../lib/harnessTasks";
+import { taskElapsedMs, type HarnessTaskRow } from "../../lib/harnessTasks";
 import { clockText, taskStartTime } from "../../lib/taskClock";
 import { MessageBubble } from "../MessageBubble";
 import { AiTurn } from "../AiTurn";
@@ -35,6 +35,72 @@ function TaskIcon({ background = false, engine = "claude", size = 16, className 
     );
   }
   return <Bot size={size} className={className || "text-text"} />;
+}
+
+function TaskStatusIcon({ status }: { status: string }) {
+  if (status === "running") return <Loader2 size={12} className="animate-spin text-brand-500 shrink-0" />;
+  if (status === "completed") return <CheckCircle2 size={12} className="text-success shrink-0" />;
+  if (status === "failed") return <AlertCircle size={12} className="text-danger shrink-0" />;
+  return <Ban size={12} className="text-text-subtle shrink-0" />;
+}
+
+function TaskPickerRow({ t, engine, now, on = false }: { t: HarnessTaskRow; engine: string; now: number; on?: boolean }) {
+  const tStarted = taskStartTime(t);
+  return (
+    <>
+      <TaskIcon background={t.background} engine={engine} size={14} className={on ? "" : "opacity-70"} />
+      <span className="flex-1 min-w-0 truncate text-left">{t.description || t.subagentType || t.taskId}</span>
+      <TaskStatusIcon status={t.status} />
+      <span className="font-mono text-[10px] opacity-60 tabular-nums shrink-0">
+        {tStarted ? `${tStarted} · ` : ""}{clockText(taskElapsedMs(t, now))}
+      </span>
+    </>
+  );
+}
+
+// Collapsed: the current task plus a count. Open: every task as a full-width row, so long names stay readable on a phone.
+function TaskPicker({ tasks, current, engine, now, onPick }: { tasks: HarnessTaskRow[]; current: HarnessTaskRow; engine: string; now: number; onPick: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const runningCount = tasks.filter((t) => t.status === "running").length;
+  return (
+    <div className="border-b border-border-subtle bg-bg shrink-0">
+      <button
+        type="button"
+        onClick={() => { vibrate(); setOpen((o) => !o); }}
+        aria-expanded={open}
+        className="w-full px-4 py-2 flex items-center gap-2 text-xs text-text hover:bg-surface-2/40 transition-colors"
+      >
+        <span className="shrink-0 px-1.5 py-0.5 rounded bg-surface-2 text-[10px] font-medium tabular-nums text-text-muted">
+          {runningCount ? `${runningCount}/${tasks.length} running` : `${tasks.length} tasks`}
+        </span>
+        <span className="flex-1 min-w-0 truncate text-left font-medium">
+          {current.description || current.subagentType || current.taskId}
+        </span>
+        <ChevronDown size={14} className={`shrink-0 text-text-muted transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="max-h-[40vh] overflow-y-auto custom-scrollbar px-2 pb-2 flex flex-col gap-0.5">
+          {tasks.map((t, i) => {
+            const on = t.taskId === current.taskId;
+            return (
+              <button
+                key={t.taskId || i}
+                type="button"
+                onClick={() => { vibrate(); onPick(t.taskId); setOpen(false); }}
+                title={t.description || t.subagentType || t.taskId}
+                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-brand text-xs transition-colors ${
+                  on ? "bg-surface-2 text-text font-medium" : "text-text-muted hover:text-text hover:bg-surface-2/40"
+                }`}
+              >
+                {on ? <Check size={12} className="shrink-0 text-brand-500" /> : <span className="w-3 shrink-0" />}
+                <TaskPickerRow t={t} engine={engine} now={now} on={on} />
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -67,7 +133,7 @@ export const AgentTaskModal = memo(function AgentTaskModal({
   const [now, setNow] = useState(() => Date.now());
   // Which task the panel is showing. `null` follows the group: until the reader picks one,
   // the panel shows the task it was opened for — or, that one gone, whatever is left.
-  const [picked, setPicked] = useState(null);
+  const [picked, setPicked] = useState<string | null>(null);
   const stored = useAiStore((s) => s.bySession[sessionId]?.harnessTasks);
 
   useEffect(() => {
@@ -111,36 +177,8 @@ export const AgentTaskModal = memo(function AgentTaskModal({
         </button>
       ) : null}
     >
-      {/* Tabs when there are multiple tasks in the session */}
       {live.length > 1 && (
-        <div className="px-4 py-2 border-b border-border-subtle bg-bg flex items-center gap-1 overflow-x-auto custom-scrollbar shrink-0">
-          {live.map((t, i) => {
-            const on = t.taskId === task.taskId;
-            const tStarted = taskStartTime(t);
-            const statusOrDuration = t.status === "running" ? clockText(taskElapsedMs(t, now)) : t.status;
-            return (
-              <button
-                key={t.taskId || t.id || i}
-                type="button"
-                onClick={() => { vibrate(); setPicked(t.taskId); }}
-                title={tStarted ? `${t.description || t.subagentType || t.taskId} (started ${tStarted})` : (t.description || t.subagentType || t.taskId)}
-                className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-brand text-xs transition-colors ${
-                  on
-                    ? "bg-surface-2 text-text font-medium"
-                    : "text-text-muted hover:text-text hover:bg-surface-2/40"
-                }`}
-              >
-                <TaskIcon background={t.background} engine={engine} size={13} className={on ? "opacity-100" : "opacity-60"} />
-                <span className="truncate max-w-[140px]">
-                  {t.description || t.subagentType || t.taskId}
-                </span>
-                <span className="font-mono text-[10px] opacity-60 tabular-nums shrink-0">
-                  {tStarted ? `${tStarted} · ${statusOrDuration}` : statusOrDuration}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <TaskPicker tasks={live} current={task} engine={engine} now={now} onPick={setPicked} />
       )}
 
       {/* The task's card IS the interface — the very card the main timeline draws for
