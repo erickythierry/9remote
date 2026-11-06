@@ -1344,6 +1344,13 @@ export class AiSession {
     if (rest?.model || rest?.effort) {
       saveAiPreference(this.engine, { model: this.model, effort: this.effort });
     }
+    if (resume && this.terminal && this.isTurnRunning) {
+      this.pendingResume = resume;
+      this.restartPending = true;
+      this._saveKvState();
+      this.flushSaveSnapshot();
+      return;
+    }
     // Resuming moves the session's own id, so a reload keeps talking to the resumed conversation.
     if (resume) {
       // Held for turn end: applyPendingOptions must re-send it, or the pane switches
@@ -1381,7 +1388,11 @@ export class AiSession {
       }
       return;
     }
-    if (this.terminal) return this._applyTerminalOptions(rest);
+    if (this.terminal) {
+      const terminalResume = resume || this.pendingResume || undefined;
+      this.pendingResume = null;
+      return this._applyTerminalOptions({ ...rest, resume: terminalResume });
+    }
     // Forward only the validated id, and replay the restart's fetch — or a mode change holds every line forever.
     const fetch = this.adapter?.setOptions?.({ ...opts, resume });
     if (fetch?.then) fetch.then((f: any) => this._replay(f));
@@ -1398,7 +1409,7 @@ export class AiSession {
     this.restartPending = false;
     const resume = this.pendingResume || null;
     this.pendingResume = null;
-    if (this.terminal) return this._applyTerminalOptions({ model: this.model, effort: this.effort, mode: this.permissionMode || undefined });
+    if (this.terminal) return this.setOptions({ model: this.model, effort: this.effort, mode: this.permissionMode || undefined, ...(resume ? { resume } : {}) });
     const fetch = this.adapter?.setOptions?.({ mode: this.permissionMode, model: this.model, effort: this.effort, ...(resume ? { resume } : {}) });
     if (fetch?.then) fetch.then((f: any) => this._replay(f));
   }
@@ -1409,7 +1420,7 @@ export class AiSession {
   }
 
   // The running TUI switches by its own commands; init tells every pane the new pick.
-  _applyTerminalOptions(opts: { model?: string; effort?: string; mode?: string }) {
+  _applyTerminalOptions(opts: { model?: string; effort?: string; mode?: string; resume?: string }) {
     // A new mode relaunches the TUI, which kills its background tasks: held until a turn ends with none left.
     const { mode, ...rest } = opts;
     const hold = Boolean(mode) && this.terminal!.needsRelaunch(mode) && this._openTasks().length > 0;

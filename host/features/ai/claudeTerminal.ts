@@ -345,7 +345,16 @@ export class ClaudeTerminal {
   // Model/effort through the TUI's own commands: the running CLI switches with no restart.
   // The mode has no command, so a new one relaunches the TUI on the same conversation (launchLine applies all three).
   // Only between turns — the session defers a pick made mid-turn (see setOptions).
-  async applyOptions({ model, effort, mode }: { model?: string; effort?: string; mode?: string }) {
+  async applyOptions({ model, effort, mode, resume }: { model?: string; effort?: string; mode?: string; resume?: string }) {
+    if (resume) {
+      await this.booting;
+      this.session.cliSessionId = resume;
+      this.file = null;
+      this.followed = resume;
+      setConversationId(this.session.id, AI_ENGINES.CLAUDE, resume, "resume");
+      if (await this.tuiRunning()) return this.relaunch();
+      return this.ensureTui();
+    }
     if (!await this.tuiRunning()) return;
     if (this.needsRelaunch(mode)) return this.relaunch();
     if (model && OPTION_RE.test(model)) await this.type(`/model ${model}`);
@@ -366,6 +375,7 @@ export class ClaudeTerminal {
   tick() {
     const s = this.session;
     if (s.destroyed) return this.dispose();
+    if (this.booting) return;
     const live = this.hookConversation();
     if (live && live !== this.followed) {
       // /clear or /resume in the TUI moved it to another conversation; the chat follows.
