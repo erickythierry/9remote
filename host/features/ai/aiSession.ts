@@ -16,7 +16,7 @@ import { attachmentMeta } from "./aiAttachment.js";
 import { getLastOutputAt, touchOutput, OUTPUT_LIVE_WINDOW_MS } from "../terminal/statusManager.js";
 import { TURN_END_EVENTS } from "./aiStatus.js";
 import { saveAiPreference } from "./models.js";
-import { ClaudeTerminal, PERMISSION_GATE_PREFIX } from "./claudeTerminal.js";
+import { ClaudeTerminal, PERMISSION_GATE_PREFIX, openQuestions } from "./claudeTerminal.js";
 import { PATHS } from "../../lib/constants.js";
 import { createLogger } from "../../lib/logger.js";
 
@@ -1280,6 +1280,8 @@ export class AiSession {
 
   // A replay window can drop the permission_request, so the open gate is restated here.
   pendingPermission() {
+    const open = this.terminal && [...(openQuestions.get(this.id) || [])].at(-1);
+    if (open) return { requestId: open[0], tool: "AskUserQuestion", input: open[1] };
     // Newest wins, matching how a replay folds them.
     const map = this.adapter?.pendingRequests;
     if (!map?.size) return null;
@@ -1290,6 +1292,7 @@ export class AiSession {
 
   resolvePermission(requestId: string | number, behavior: string, message = "", updatedInput?: any) {
     // A skipped question goes back to the TUI's own dialog; a permission takes the chat's decision.
+    if (this.terminal && openQuestions.get(this.id)?.has(String(requestId))) return this.terminal.answer(String(requestId), null);
     if (this.terminal?.questions.has(String(requestId))) {
       const gate = String(requestId);
       if (gate.startsWith(PERMISSION_GATE_PREFIX)) {

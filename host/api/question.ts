@@ -1,13 +1,15 @@
 /**
- * Gates a claude chat answers for the TUI in its terminal (localhost-only): AskUserQuestion
- * (PreToolUse) and permission dialogs (PermissionRequest). The hook posts and holds; the
- * chat's answer becomes the hook's output, so the TUI never opens its own dialog. No answer
- * (no chat, skipped, timed out): an empty body leaves the TUI to ask as usual.
+ * Gates a claude chat answers for the TUI in its terminal (localhost-only). AskUserQuestion
+ * (PreToolUse) is not held: the TUI shows its dialog and the chat mirrors it (claudeTerminal.ts).
+ * Permission dialogs (PermissionRequest) and elicitations hold, and the chat's answer becomes
+ * the hook's output. No answer (no chat, skipped, timed out): an empty body leaves the TUI to ask.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { jsonErr } from "../lib/router.js";
 import { globalAiManager } from "../features/ai/aiManager.js";
-import { PERMISSION_GATE_PREFIX } from "../features/ai/claudeTerminal.js";
+import { PERMISSION_GATE_PREFIX, openQuestions } from "../features/ai/claudeTerminal.js";
+import { getSessionAgent } from "../features/terminal/statusManager.js";
+import { isTuiChatSurface } from "../features/terminal/conversationModes.js";
 import { CLAUDE_QUESTION_WAIT_MS } from "../features/ai/constants.js";
 
 const MAX_BODY = 256 * 1024;
@@ -27,7 +29,20 @@ export async function handleQuestionPost(req: IncomingMessage, res: ServerRespon
   try { hook = JSON.parse(body || "{}"); } catch { return jsonErr(res, 400, "Invalid JSON"); }
   const sessionId = new URL(req.url || "", "http://x").searchParams.get("sessionId") || "";
   const terminal = globalAiManager.getSession(sessionId)?.terminal;
-  if (!terminal) return res.end();
+
+  // The TUI opens its own dialog at once; the chat mirrors it and answers by typing into it.
+  if (hook.hook_event_name === "PreToolUse") {
+    const input = hook?.tool_input || {};
+    const id = String(hook.tool_use_id || "");
+    if (hook.tool_name !== "AskUserQuestion" || !id || !Array.isArray(input.questions) || !input.questions.length) return res.end();
+    if (!openQuestions.has(sessionId)) openQuestions.set(sessionId, new Map());
+    openQuestions.get(sessionId)!.set(id, { questions: input.questions });
+    terminal?.mirrorQuestion(id, { questions: input.questions });
+    return res.end();
+  }
+
+  // In terminal mode no chat card is on screen, so a held gate would freeze the TUI.
+  if (!terminal || !isTuiChatSurface(getSessionAgent(sessionId))) return res.end();
 
   if (hook.hook_event_name === "Elicitation") {
     const serverName = String(hook?.mcp_server_name || "mcp");
@@ -63,8 +78,4 @@ export async function handleQuestionPost(req: IncomingMessage, res: ServerRespon
     });
   }
 
-  if (toolName !== "AskUserQuestion" || !Array.isArray(input.questions) || !input.questions.length) return res.end();
-  const answers = await terminal.ask(String(hook.tool_use_id || `q-${Date.now()}`), toolName, { questions: input.questions }, CLAUDE_QUESTION_WAIT_MS);
-  if (!answers) return res.end();
-  reply(res, { hookEventName: "PreToolUse", permissionDecision: "allow", updatedInput: { ...input, answers } });
 }

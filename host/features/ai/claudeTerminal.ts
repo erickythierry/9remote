@@ -101,6 +101,27 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const ECHO_NOISE_RE = new RegExp(`\\[Image #\\d+\\]|</?pasted_content[^>]*>|${UPLOAD_DIR}/\\S+`, "g");
 export const echoKey = (text: string) => text.replace(ECHO_NOISE_RE, " ").replace(/\s+/g, " ").trim();
 
+const ARROW_RIGHT = "\x1b[C";
+
+// AskUserQuestion dialogs open in the TUI, by terminal session then tool_use id; the chat shows each as a card.
+export const openQuestions = new Map<string, Map<string, { questions: any[] }>>();
+
+// The keys that answer the TUI's dialog: a digit picks (and advances), multiSelect toggles then moves on,
+// and a dialog with several steps ends on a review whose option 1 submits. null when an answer is no option label.
+export function questionKeys(questions: any[], answers: Record<string, string>): string[] | null {
+  const keys: string[] = [];
+  for (const q of questions) {
+    const labels = (q.options || []).map((o: any) => String(o?.label ?? ""));
+    const picked = q.multiSelect ? String(answers?.[q.question] ?? "").split(", ").filter(Boolean) : [String(answers?.[q.question] ?? "")];
+    const idx = picked.map((l) => labels.indexOf(l));
+    if (!idx.length || idx.some((i) => i < 0 || i > 8)) return null;
+    keys.push(...idx.map((i) => String(i + 1)));
+    if (q.multiSelect) keys.push(ARROW_RIGHT);
+  }
+  if (questions.length > 1 || questions[0]?.multiSelect) keys.push("1");
+  return keys;
+}
+
 export class ClaudeTerminal {
   session: AiSession;
   timer: NodeJS.Timeout | null = null;
@@ -143,6 +164,8 @@ export class ClaudeTerminal {
     this.followed = live;
     if (live) s.cliSessionId = live;
     this.timer = setInterval(() => this.tick(), CLAUDE_TERMINAL_POLL_MS);
+    // A dialog the TUI opened while no chat was up still waits there.
+    for (const [id, input] of openQuestions.get(s.id) || []) this.mirrorQuestion(id, input);
     // A chat-first tab shows the TUI in its terminal from the start; a terminal-first one already runs it.
     if (isTuiChatSurface(getSessionAgent(s.id))) {
       this.ensureTui().catch((err) => logger.warn(`session ${s.id}: ${err.message}`));
@@ -430,6 +453,8 @@ export class ClaudeTerminal {
     const { lines, live } = liveTranscript(this.file!);
     this.shells.clear();
     this.parse = claudeRecordParser((ev) => {
+      // Answered in the TUI (or by the chat's keys): the card goes too.
+      if (ev.event === "tool_result" && ev.data?.id) this.closeQuestion(String(ev.data.id));
       this.trackShell(ev);
       // Attachments come in through the session's own turn-end read; a second door would draw them twice.
       if (this.muted || (ev.event === "cli_event" && ev.data?.type === "attachment")) return;
@@ -486,8 +511,36 @@ export class ClaudeTerminal {
     });
   }
 
+  mirrorQuestion(requestId: string, input: { questions: any[] }) {
+    this.session.emitNormalized("permission_request", { requestId, tool: "AskUserQuestion", input, type: "question" });
+  }
+
+  closeQuestion(requestId: string) {
+    if (!openQuestions.get(this.session.id)?.delete(requestId)) return;
+    this.session.emitNormalized("permission_resolved", { requestId, behavior: "allow" });
+  }
+
+  // A chat answer is typed into the TUI's dialog; the transcript's tool_result then closes the card.
+  answerQuestion(requestId: string, answer: any) {
+    const input = openQuestions.get(this.session.id)?.get(requestId);
+    if (!input) return false;
+    // Skipped: only the card goes; the dialog stays in the TUI.
+    if (!answer) { this.closeQuestion(requestId); return true; }
+    const keys = questionKeys(input.questions, answer);
+    if (!keys) return false;
+    this.closeQuestion(requestId);
+    (async () => {
+      for (const k of keys) {
+        daemonClient.sendInput(this.session.id, k);
+        await sleep(CLAUDE_TERMINAL_ENTER_MS);
+      }
+    })();
+    return true;
+  }
+
   // false when the gate is gone (answered elsewhere, timed out) so the card reports it.
   answer(requestId: string, answer: any) {
+    if (openQuestions.get(this.session.id)?.has(requestId)) return this.answerQuestion(requestId, answer);
     const done = this.questions.get(requestId);
     if (!done) return false;
     this.questions.delete(requestId);
