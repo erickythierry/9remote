@@ -1,7 +1,7 @@
 import type { ExplorerSocket } from "../fileExplorerSocket.js";
 import fs from "fs";
 import path from "path";
-import { spawn, spawnSync, execSync, type SpawnOptions } from "child_process";
+import { spawn, spawnSync, type SpawnOptions } from "child_process";
 import { BINARY_EXTENSIONS, MAX_FILE_SIZE, DEFAULT_GIT_LOG_LIMIT, GIT_STAT_FAIL_TTL_MS, MAX_GIT_OUTPUT_SIZE, MAX_GIT_DIFF_SIZE, MIME_BY_EXT, MAX_IMAGE_RAW_SIZE } from "../constants.js";
 import { isSensitivePath } from "../pathGuard.js";
 import { scaleImageBuffer } from "./FileHandler.js";
@@ -216,87 +216,94 @@ function capDiff(diff: string): string {
   return `${diff.slice(0, MAX_GIT_DIFF_SIZE)}\n\n... diff truncated (over ${Math.round(MAX_GIT_DIFF_SIZE / 1024 / 1024)}MB)`;
 }
 
+// Full status list for the explorer badges. Async so a big repo never blocks the event loop,
+// and de-duplicated per gitRoot so 5s polls cannot pile up behind a slow run.
+const _statusPending = new Map<string, Promise<Record<string, unknown>>>();
+function gitStatusCached(gitRoot: string): Promise<Record<string, unknown>> {
+  const pending = _statusPending.get(gitRoot);
+  if (pending) return pending;
+  const run = buildGitStatus(gitRoot).finally(() => _statusPending.delete(gitRoot));
+  _statusPending.set(gitRoot, run);
+  return run;
+}
+
+async function buildGitStatus(gitRoot: string): Promise<Record<string, unknown>> {
+  // -uall: without it git collapses an untracked directory into one entry, which the
+  // UI then opens as a file (EISDIR) and counts as zero added lines.
+  const result = await runGit(["status", "--porcelain", "--no-renames", "-uall"], gitRoot);
+  if (result.code !== 0) return { success: false, error: "Not a git repository or git not available" };
+
+  // Get diff stats for tracked files
+  const diffStats: Record<string, { added: number; deleted: number }> = {};
+  let warning: string | undefined;
+  const failure = _statFailures.get(gitRoot);
+  const mtime = indexMtime(gitRoot);
+  if (failure && Date.now() - failure.ts < GIT_STAT_FAIL_TTL_MS && failure.indexMtime === mtime) {
+    warning = failure.warning;
+  } else {
+    const stat = await runGit(["diff", "HEAD", "--numstat", "--no-renames"], gitRoot);
+    if (stat.code === 0) {
+      _statFailures.delete(gitRoot);
+      stat.stdout.trim().split("\n").filter(Boolean).forEach(line => {
+        const parts = line.split("\t");
+        if (parts.length >= 3) {
+          diffStats[parts[2]] = {
+            added: parts[0] === "-" ? 0 : parseInt(parts[0], 10) || 0,
+            deleted: parts[1] === "-" ? 0 : parseInt(parts[1], 10) || 0
+          };
+        }
+      });
+    } else {
+      const detail = stat.stderr.trim().split("\n")[0] || "unknown error";
+      warning = `git diff failed (${stat.code === null ? "killed" : `exit ${stat.code}`}): ${detail}. The repository may be corrupted.`;
+      console.warn(`[git] ${gitRoot}: ${warning}`);
+      _statFailures.set(gitRoot, { ts: Date.now(), indexMtime: mtime, warning });
+    }
+  }
+
+  const files = [];
+  for (const line of result.stdout.trim().split("\n").filter(Boolean)) {
+    const match = line.match(/^([MADRCU?! ]{1,2})\s+(.+)$/);
+    if (!match) continue;
+    const statusCode = match[1];
+    // git wraps paths with special chars in double quotes; strip them.
+    // Trim trailing CR (CRLF output) / whitespace that breaks path joins.
+    let filePath = match[2].replace(/\r+$/, "").trim();
+    if (filePath.startsWith('"') && filePath.endsWith('"')) filePath = filePath.slice(1, -1);
+    if (!filePath) continue;
+
+    let status;
+    if (statusCode.includes("?")) status = "?";
+    else if (statusCode.includes("A")) status = "A";
+    else if (statusCode.includes("D")) status = "D";
+    else if (statusCode.includes("M")) status = "M";
+    else if (statusCode.includes("R")) status = "R";
+    else status = statusCode.trim()[0] || "?";
+
+    const stats = diffStats[filePath] || { added: 0, deleted: 0 };
+    if (status === "?") {
+      try {
+        const fullPath = path.join(gitRoot, filePath);
+        if (!isBinaryFile(filePath) && !isSensitivePath(fullPath) && (await fs.promises.stat(fullPath)).size <= MAX_FILE_SIZE) {
+          const content = await fs.promises.readFile(fullPath, "utf-8");
+          stats.added = content.split("\n").length;
+          stats.deleted = 0;
+        }
+      } catch {}
+    }
+
+    files.push({ status, path: filePath, file: filePath, added: stats.added, deleted: stats.deleted });
+  }
+
+  return { success: true, files, gitRoot, warning };
+}
+
 export function setupGitHandlers(socket: ExplorerSocket) {
-  socket.on("gitStatus", ({ repoPath }: { repoPath: string }, callback: Cb) => {
+  socket.on("gitStatus", async ({ repoPath }: { repoPath: string }, callback: Cb) => {
     if (!repoPath) return callback({ success: false, error: "repoPath required" });
     const gitRoot = findGitRoot(repoPath);
     if (!gitRoot) return callback({ success: false, error: "Not a git repository or git not available" });
-    try {
-      // -uall: without it git collapses an untracked directory into one entry, which the
-      // UI then opens as a file (EISDIR) and counts as zero added lines.
-      const result = execSync("git status --porcelain --no-renames -uall", {
-        cwd: gitRoot, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true
-      });
-
-      // Get diff stats for tracked files
-      const diffStats: Record<string, { added: number; deleted: number }> = {};
-      let warning: string | undefined;
-      const failure = _statFailures.get(gitRoot);
-      const mtime = indexMtime(gitRoot);
-      if (failure && Date.now() - failure.ts < GIT_STAT_FAIL_TTL_MS && failure.indexMtime === mtime) {
-        warning = failure.warning;
-      } else {
-        try {
-          const statResult = execSync("git diff HEAD --numstat --no-renames", {
-            cwd: gitRoot, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], windowsHide: true
-          });
-          _statFailures.delete(gitRoot);
-          statResult.trim().split("\n").filter(Boolean).forEach(line => {
-            const parts = line.split("\t");
-            if (parts.length >= 3) {
-              diffStats[parts[2]] = {
-                added: parts[0] === "-" ? 0 : parseInt(parts[0], 10) || 0,
-                deleted: parts[1] === "-" ? 0 : parseInt(parts[1], 10) || 0
-              };
-            }
-          });
-        } catch (e) {
-          const err = e as { signal?: string; status?: number; stderr?: Buffer | string };
-          const detail = String(err.stderr ?? "").trim().split("\n")[0] || errMsg(e);
-          warning = `git diff failed (${err.signal ?? `exit ${err.status}`}): ${detail}. The repository may be corrupted.`;
-          console.warn(`[git] ${gitRoot}: ${warning}`);
-          _statFailures.set(gitRoot, { ts: Date.now(), indexMtime: mtime, warning });
-        }
-      }
-
-      const files = [];
-      for (const line of result.trim().split("\n").filter(Boolean)) {
-        const match = line.match(/^([MADRCU?! ]{1,2})\s+(.+)$/);
-        if (!match) continue;
-        const statusCode = match[1];
-        // git wraps paths with special chars in double quotes; strip them.
-        // Trim trailing CR (CRLF output) / whitespace that breaks path joins.
-        let filePath = match[2].replace(/\r+$/, "").trim();
-        if (filePath.startsWith('"') && filePath.endsWith('"')) filePath = filePath.slice(1, -1);
-        if (!filePath) continue;
-
-        let status;
-        if (statusCode.includes("?")) status = "?";
-        else if (statusCode.includes("A")) status = "A";
-        else if (statusCode.includes("D")) status = "D";
-        else if (statusCode.includes("M")) status = "M";
-        else if (statusCode.includes("R")) status = "R";
-        else status = statusCode.trim()[0] || "?";
-
-        const stats = diffStats[filePath] || { added: 0, deleted: 0 };
-        if (status === "?") {
-          try {
-            const fullPath = path.join(gitRoot, filePath);
-            if (fs.existsSync(fullPath) && !isBinaryFile(filePath) && !isSensitivePath(fullPath)) {
-              const content = fs.readFileSync(fullPath, "utf-8");
-              stats.added = content.split("\n").length;
-              stats.deleted = 0;
-            }
-          } catch {}
-        }
-
-        files.push({ status, path: filePath, file: filePath, added: stats.added, deleted: stats.deleted });
-      }
-
-      callback({ success: true, files, gitRoot, warning });
-    } catch {
-      callback({ success: false, error: "Not a git repository or git not available" });
-    }
+    callback(await gitStatusCached(gitRoot));
   });
 
   // Lightweight: only the count of changed files (badge), avoids sending the full list.
