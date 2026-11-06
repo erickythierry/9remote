@@ -526,6 +526,7 @@ function TerminalWorkspace({
     // This pane's own machine — every pane on screen, not only the focused one.
     const paneFileBus = session?.hostKey ? connOf(session.hostKey).fileBus : activeFileBus;
     const sessionAgent = agentBySession[sessionId];
+    const hiddenRepos = session ? workspaces.find((w) => w.id === sessionWorkspaceId(session))?.hiddenRepos : undefined;
     // Resolved from the engine registry, not a hardcoded id list: adding an engine
     // must not need a second edit here (antigravity-ui rendered as a terminal).
     const aiUi = sessionAgent?.endsWith("-ui") ? AI_UI_OPTIONS.find((u) => u.id === `${baseAgentId(sessionAgent)}-ui`) : null;
@@ -538,6 +539,7 @@ function TerminalWorkspace({
             sessionId={sessionId}
             engine={aiUi.aiEngine}
             workspacePath={session?.cwd || session?.workspacePath || activeWorkspace?.path}
+            hiddenRepos={hiddenRepos}
             sessionName={session?.name}
             bus={busFor(sessionId)}
             fileBus={paneFileBus}
@@ -559,6 +561,7 @@ function TerminalWorkspace({
       // Session's own workspace — the folder button opens the right panel's files tab
       // keyed to it, not to whichever workspace currently owns the panel.
       workspacePath={session?.workspacePath}
+      hiddenRepos={hiddenRepos}
       sessionName={session?.name}
       bus={busFor(sessionId)}
       fileBus={paneFileBus}

@@ -96,7 +96,7 @@ export function refreshWorkspaceChangedCount(rootPath: string): void {
 export function useWorkspaceChangedCount(
   rootPath?: string | null,
   fileBus?: any,
-  { enabled = true }: { enabled?: boolean } = {}
+  { enabled = true, hiddenRepos }: { enabled?: boolean; hiddenRepos?: string[] } = {}
 ): WorkspaceChangedState {
   const [state, setState] = useState<WorkspaceChangedState>(EMPTY);
 
@@ -112,5 +112,7 @@ export function useWorkspaceChangedCount(
     };
   }, [rootPath, fileBus, enabled]);
 
-  return state;
+  if (!hiddenRepos?.length) return state;
+  const hiddenCount = hiddenRepos.reduce((n, repo) => n + (state.perRepo[repo] ?? 0), 0);
+  return hiddenCount ? { ...state, count: state.count - hiddenCount } : state;
 }

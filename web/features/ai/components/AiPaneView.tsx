@@ -58,6 +58,7 @@ export interface AiPaneViewProps {
   sessionId?: string;
   engine?: string;
   workspacePath?: string;
+  hiddenRepos?: string[];
   sessionName?: string;
   bus?: any;
   fileBus?: any;
@@ -76,6 +77,7 @@ export const AiPaneView = memo(function AiPaneView({
   sessionId = "",
   engine = "claude",
   workspacePath = "",
+  hiddenRepos,
   sessionName = "",
   bus = null,
   fileBus = null,
@@ -137,7 +139,7 @@ export const AiPaneView = memo(function AiPaneView({
   // What the AI showed from this chat, newest first — same stack the terminal pane reads.
   const artifacts = useTerminalStore((s) => s.artifactsBySession[sessionId]);
   // One poll per workspace path, shared with the terminal panes and the git panel.
-  const { count: changedCount } = useWorkspaceChangedCount(workspacePath, fileBus, { enabled: isFocused && showFolderButton });
+  const { count: changedCount } = useWorkspaceChangedCount(workspacePath, fileBus, { enabled: isFocused && showFolderButton, hiddenRepos });
   const { theme } = useTheme();
 
   // Chat text is plain prose, not terminal output — take only fg/bg from the

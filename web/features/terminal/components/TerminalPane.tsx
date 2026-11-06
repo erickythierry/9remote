@@ -32,6 +32,7 @@ export const OVERLAY_ICON_SM = "sm:w-3.5 sm:h-3.5";
 export interface TerminalPaneProps {
   bus?: any;
   workspacePath?: string | null;
+  hiddenRepos?: string[];
   connected?: boolean;
   sessionId: string;
   sessionName?: string;
@@ -56,6 +57,7 @@ export interface TerminalPaneProps {
 function TerminalPane({
   bus,
   workspacePath,
+  hiddenRepos,
   connected,
   sessionId,
   sessionName,
@@ -269,7 +271,7 @@ function TerminalPane({
   // Workspace-wide count (root repo + nested ones), shared with the git panel so the
   // two badges read one number from one poll. Sessions without a workspace fall back
   // to the live cwd, which is where that pane actually stands.
-  const { count: shownCount } = useWorkspaceChangedCount(workspacePath || cwd, fileBus, { enabled: !!isVisible });
+  const { count: shownCount } = useWorkspaceChangedCount(workspacePath || cwd, fileBus, { enabled: !!isVisible, hiddenRepos });
 
   const badgeLabel = shownCount > MAX_CHANGED_BADGE ? `${MAX_CHANGED_BADGE}+` : shownCount;
 
