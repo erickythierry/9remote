@@ -117,6 +117,8 @@ export function questionKeys(questions: any[], answers: Record<string, string>):
     if (!idx.length || idx.some((i) => i < 0 || i > 8)) return null;
     keys.push(...idx.map((i) => String(i + 1)));
     if (q.multiSelect) keys.push(ARROW_RIGHT);
+    // With a preview pane the digit only moves the cursor; Enter picks.
+    else if ((q.options || []).some((o: any) => o?.preview)) keys.push("\r");
   }
   if (questions.length > 1 || questions[0]?.multiSelect) keys.push("1");
   return keys;
